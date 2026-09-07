@@ -415,6 +415,8 @@ test("개인설정은 프로필 왼쪽에 있고 새 선택에만 적용하며 I
   assert.match(html, /data-personal-settings-tab="loadout"[^>]*>로드아웃/);
   assert.match(html, /data-personal-settings-tab="values"[^>]*>수치/);
   assert.match(html, /data-personal-settings-tab="common"[^>]*>공용/);
+  assert.match(app, /"ui\.armorShoulders": "측면 몸통"/);
+  assert.match(app, /"ui\.armorShoulders": "Side Torsos"/);
   assert.match(html, /id="initial-armor-settings"(?![^>]*hidden)/);
   assert.match(html, /id="initial-armor-percentages"(?![^>]*hidden)/);
   assert.doesNotMatch(html, /<fieldset[^>]+(?:initial-fitting-settings|initial-armor-settings)/);
