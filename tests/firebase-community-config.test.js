@@ -104,7 +104,7 @@ test("선택형 고유 닉네임은 UID 소유권과 분리해 예약하고 공�
   assert.match(client, /previousNicknameRef[\s\S]*transaction\.get\(previousNicknameRef\)[\s\S]*transaction\.set\(nicknameRef[\s\S]*transaction\.delete\(previousNicknameRef\)[\s\S]*transaction\.set\(userRef/);
   assert.match(client, /new Set\(remoteRecords\.map\(\(record\) => String\(record\.ownerUid/);
   assert.match(client, /await hydrateRecordAuthors\(nextRecords\)/);
-  assert.match(client, /normalizeSnapshot\(snapshot, "shared"\)[\s\S]*await hydrateRecordAuthors\(\[record\]\)[\s\S]*bridge\.openPublicFitting/);
+  assert.match(client, /normalizeSnapshot\(snapshot, "shared"\)[\s\S]*await hydrateRecordAuthors\(\[record\]\)[\s\S]*bridge\.openSharedFitting/);
   assert.match(client, /community-author[^\n]+record\.authorName \|\| PILOT_NAME/);
   assert.match(app, /ownerUid: record\.ownerUid[\s\S]*authorName: record\.authorName \|\| "Pilot"/);
   assert.match(app, /public-fitting-source-author[\s\S]*source\.authorName \|\| "Pilot"/);
@@ -135,7 +135,7 @@ test("통합 브라우저는 공개·로컬·내 업로드 탭과 chassisKey가 
   assert.doesNotMatch(client, /publicFittings|fittingOwners/);
 });
 
-test("공유 핏팅은 fitting 문서 URL로 연 경우에만 출처 상태를 만든다", () => {
+test("공유 문서 URL과 브라우저 적용은 공유 출처 경로를 제공한다", () => {
   const app = read("public/app.js");
   const client = read("public/firebase-community.js");
   const html = read("public/index.html");
@@ -156,6 +156,8 @@ test("공유 핏팅은 fitting 문서 URL로 연 경우에만 출처 상태를 �
   assert.match(client, /getDoc\(firebaseApi\.doc\(db, "fittings", fittingId\)\)/);
   assert.match(client, /normalizeSnapshot\(snapshot, "shared"\)[\s\S]*bridge\.openSharedFitting/);
   assert.match(client, /if \(currentUser\) await syncActiveSourceLikeState\(\)/);
+  assert.match(client, /async function syncOpenSourceLikeStates\(\)[\s\S]*bridge\.listPublicFittingSources\?\.\(\)[\s\S]*Promise\.all\(sources\.map\(syncSourceLikeState\)\)/);
+  assert.match(client, /if \(user\) \{[\s\S]*initializeCurrentProfile\(user\);[\s\S]*syncOpenSourceLikeStates\(\)/);
   assert.match(client, /if \(!shared\.present\) \{[\s\S]*syncActiveSourceLikeState\(\)/);
   assert.doesNotMatch(
     client.match(/async function loadSharedFitting\(fittingId\) \{[\s\S]*?\n\}/)?.[0] || "",
@@ -179,6 +181,63 @@ test("공유 핏팅은 fitting 문서 URL로 연 경우에만 출처 상태를 �
   assert.match(styles, /\.community-share-url-overlay \{ z-index: 1750; \}/);
 });
 
+test("브라우저 공개·내 게시물 적용은 출처를 생성해 작성자·좋아요와 추천을 렌더하고 로컬 적용은 출처를 제거한다", () => {
+  const app = read("public/app.js");
+  const client = read("public/firebase-community.js");
+  const applySource = client.match(/function applyFitting\(id\) \{[\s\S]*?\n\}/)[0];
+  const communityApply = app.match(/function applyCommunityFitting\(record, isShared = false\) \{[\s\S]*?\n\}/)[0];
+  const bridgeMethods = app.slice(app.indexOf("  openLocalFitting(record) {"), app.indexOf("  setSharedFittingRequestPending(pending) {"));
+  const renderSource = app.slice(app.indexOf("function communityLikeIconHtml()"), app.indexOf("function renderComponents("));
+  const factory = new Function("activeBrowserTab", "currentUser", `
+    const record = { id: "document", valid: true, name: "Shared", authorName: "Author", ownerUid: "owner", loadoutCode: "original", liked: true };
+    const records = [record];
+    const tab = {};
+    const state = { showRecommendedFittings: true, activeMainTab: "mechlab", selectedMech: { id: 100 }, currentBuild: {}, recommendedFittingsMechId: "100", recommendedFittings: [{ id: "recommended", name: "Recommended", likeCount: 5 }] };
+    let html = "";
+    const navigation = [];
+    const likes = [];
+    let closed = false;
+    const activeMechlabTab = () => tab;
+    const importMwoCode = () => { delete tab.communitySource; renderAll(); };
+    const currentBuildAsMwoLoadout = () => "baseline";
+    const MWOCodec = { encode: (value) => value };
+    const preserveCurrentFittingHistoryEntry = () => {};
+    const updatePublicFittingNavigation = (id, mode) => navigation.push({ id, mode });
+    const t = (key) => key;
+    const escapeHtml = (value) => String(value);
+    const renderAll = () => { html = renderCommunityAreaPanel(); };
+    const closeCommunity = () => { closed = true; };
+    const ensureLikeState = (id) => likes.push(id);
+    ${renderSource}
+    ${communityApply}
+    const bridge = { ${bridgeMethods} };
+    ${applySource}
+    return { applyFitting, tab, navigation, likes, rendered: () => html, closed: () => closed };
+  `);
+  for (const browserTab of ["public", "mine"]) {
+    for (const user of [null, { uid: "viewer" }]) {
+      const api = factory(browserTab, user);
+      api.applyFitting("document");
+      assert.equal(api.tab.communitySource?.id, "document", `${browserTab} 적용에서 공유 출처를 만들어야 한다`);
+      assert.equal(api.tab.communitySource.canLike, Boolean(user));
+      assert.deepEqual(api.navigation, [{ id: "document", mode: "push" }]);
+      assert.deepEqual(api.likes, ["document"]);
+      assert.match(api.rendered(), /public-fitting-source-author[^>]*>community.author: Author/);
+      assert.match(api.rendered(), /data-community-source-like="document"/);
+      assert.match(api.rendered(), /data-recommended-fitting-open="recommended"/);
+      assert.ok(api.rendered().indexOf("public-fitting-source-author") < api.rendered().indexOf("recommended-fittings-panel"));
+      assert.equal(api.closed(), true);
+    }
+  }
+  const local = factory("local", { uid: "viewer" });
+  local.tab.communitySource = { id: "old-document" };
+  local.applyFitting("document");
+  assert.equal(local.tab.communitySource, undefined);
+  assert.doesNotMatch(local.rendered(), /public-fitting-source/);
+  assert.deepEqual(local.likes, []);
+  assert.deepEqual(local.navigation, []);
+});
+
 test("추천 핏팅은 현재 mechId의 좋아요 상위 3개를 날짜별 캐시하고 공용 상세 섹션으로 미리 본다", () => {
   const app = read("public/app.js");
   const client = read("public/firebase-community.js");
@@ -191,7 +250,7 @@ test("추천 핏팅은 현재 mechId의 좋아요 상위 3개를 날짜별 캐�
   assert.match(app, /const SHOW_RECOMMENDED_FITTINGS_STORAGE_KEY = "mwolab:show-recommended-fittings"/);
   assert.match(app, /return localStorage\.getItem\(SHOW_RECOMMENDED_FITTINGS_STORAGE_KEY\) !== "false"/);
   assert.match(app, /sharedFittingRequestPending: new URL\(window\.location\.href\)\.searchParams\.has\(SHARED_PUBLIC_FITTING_QUERY_PARAM\)/);
-  assert.match(app, /function recommendationContext\(\)[\s\S]*state\.activeMainTab === "mechlab"[\s\S]*!state\.mechlabBrowseMode[\s\S]*state\.currentBuild[\s\S]*sharedFitting: Boolean\(source \|\| state\.sharedFittingRequestPending\)/);
+  assert.match(app, /function recommendationContext\(\)[\s\S]*state\.activeMainTab === "mechlab"[\s\S]*!state\.mechlabBrowseMode[\s\S]*state\.currentBuild[\s\S]*sharedFittingRequestPending: Boolean\(state\.sharedFittingRequestPending\)/);
   assert.match(app, /setSharedFittingRequestPending\(pending\)[\s\S]*state\.sharedFittingRequestPending = Boolean\(pending\)/);
   assert.match(app, /function setMainTab\(tabName\)[\s\S]*notifyRecommendationContext\(\)/);
   assert.match(app, /function showFullMechlabList\(intent = null\)[\s\S]*state\.mechlabBrowseMode = true;[\s\S]*notifyRecommendationContext\(\)/);
@@ -211,7 +270,7 @@ test("추천 핏팅은 현재 mechId의 좋아요 상위 3개를 날짜별 캐�
   assert.match(client, /recommendationCache\.has\(mechId\)[\s\S]*recommendationCache\.get\(mechId\)/);
   assert.match(client, /function openRecommendationDialog[\s\S]*fittingDetailSectionsHtml\(record\.analysis\)/);
   assert.match(client, /function fittingDetailHtml[\s\S]*\$\{fittingDetailSectionsHtml\(analysis\)\}/);
-  assert.match(client, /function applyRecommendation[\s\S]*bridge\.openPublicFitting/);
+  assert.match(client, /function applyRecommendation[\s\S]*bridge\.openSharedFitting/);
   assert.match(client, /function loadSharedFittingFromLocation\(\)[\s\S]*setSharedFittingRequestPending\?\.\(true\)/);
   assert.match(client, /mwolab:shared-fitting-navigation-cleared[\s\S]*sharedLoadGeneration \+= 1/);
   assert.match(client, /if \(!snapshot\.exists\(\)\) \{[\s\S]*setSharedFittingRequestPending\?\.\(false\)/);
@@ -231,6 +290,97 @@ test("추천 핏팅은 현재 mechId의 좋아요 상위 3개를 날짜별 캐�
   assert.ok(signatures.includes("mechId:ASCENDING,likeCount:DESCENDING"));
 });
 
+test("추천 적용은 공유 출처를 즉시 만들고 작성자·좋아요를 보충하며 늦은 응답으로 피팅을 다시 적용하지 않는다", async () => {
+  const client = read("public/firebase-community.js");
+  const source = client.match(/async function applyRecommendation\(\) \{[\s\S]*?\n\}/)[0];
+  for (const currentUser of [null, { uid: "viewer" }]) {
+    const applied = [];
+    const authors = [];
+    let likeSyncs = 0;
+    let resolveAuthor;
+    const authorReady = new Promise((resolve) => { resolveAuthor = resolve; });
+    const record = { id: "recommended", ownerUid: "owner", source: "recommendation", valid: true, loadoutCode: "code" };
+    const api = new Function("dependencies", `
+      const { currentUser, record, bridge, hydrateRecordAuthors, syncActiveSourceLikeState } = dependencies;
+      let recommendationDialogRecord = record;
+      function closeRecommendationDialog() { recommendationDialogRecord = null; }
+      ${source}
+      return { applyRecommendation, closed: () => recommendationDialogRecord === null };
+    `)({
+      currentUser, record,
+      bridge: {
+        openSharedFitting: (payload) => applied.push(payload),
+        updatePublicFittingAuthor: (uid, name) => authors.push({ uid, name }),
+      },
+      hydrateRecordAuthors: async ([target]) => {
+        assert.equal(target, record);
+        await authorReady;
+        target.authorName = "Author";
+      },
+      syncActiveSourceLikeState: async () => { likeSyncs += 1; },
+    });
+    const pending = api.applyRecommendation();
+    assert.equal(applied.length, 1);
+    assert.equal(applied[0].id, "recommended");
+    assert.equal(applied[0].canLike, Boolean(currentUser));
+    assert.equal(api.closed(), true);
+    assert.equal(likeSyncs, 1);
+    await api.applyRecommendation();
+    resolveAuthor();
+    await pending;
+    assert.deepEqual(authors, [{ uid: "owner", name: "Author" }]);
+    assert.equal(applied.length, 1, "메타데이터 조회 완료는 피팅을 재적용하지 않아야 한다");
+  }
+});
+
+test("공유 정보의 작성자·좋아요는 추천 설정과 무관하게 유지하고 추천 목록을 그 아래에 표시한다", () => {
+  const app = read("public/app.js");
+  const source = app.slice(app.indexOf("function communityLikeIconHtml()"), app.indexOf("function renderComponents("));
+  const state = {
+    showRecommendedFittings: true,
+    activeMainTab: "mechlab",
+    mechlabBrowseMode: false,
+    selectedMech: { id: 100 },
+    currentBuild: {},
+    sharedFittingRequestPending: false,
+    recommendedFittingsMechId: "100",
+    recommendedFittings: [{ id: "recommended", name: "Recommended", likeCount: 5, tags: [] }],
+  };
+  const tab = { communitySource: { id: "shared", name: "Shared", authorName: "Author", liked: false, canLike: false } };
+  const api = new Function("state", "activeMechlabTab", "t", "escapeHtml", `${source}\nreturn { renderCommunityAreaPanel, recommendationContext };`)(
+    state, () => tab, (key) => key, (value) => String(value),
+  );
+  const assertSource = (html) => {
+    assert.match(html, /public-fitting-source-author[^>]*>community.author: Author/);
+    assert.match(html, /data-community-source-like="shared"/);
+  };
+  let html = api.renderCommunityAreaPanel();
+  assertSource(html);
+  assert.match(html, /login-required/);
+  assert.ok(html.indexOf('data-community-source-like="shared"') < html.indexOf('class="recommended-fittings-panel"'));
+  assert.match(html, /data-recommended-fitting-open="recommended"/);
+  state.showRecommendedFittings = false;
+  html = api.renderCommunityAreaPanel();
+  assertSource(html);
+  assert.doesNotMatch(html, /recommended-fittings-panel/);
+  state.showRecommendedFittings = true;
+  state.sharedFittingRequestPending = true;
+  html = api.renderCommunityAreaPanel();
+  assertSource(html);
+  assert.doesNotMatch(html, /recommended-fittings-panel/);
+  state.sharedFittingRequestPending = false;
+  tab.communitySource.canLike = true;
+  tab.communitySource.liked = true;
+  html = api.renderCommunityAreaPanel();
+  assertSource(html);
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /recommended-fittings-panel/);
+  delete tab.communitySource;
+  html = api.renderCommunityAreaPanel();
+  assert.doesNotMatch(html, /public-fitting-source/);
+  assert.match(html, /recommended-fittings-panel/);
+});
+
 test("추천 핏팅 날짜 캐시는 재접속·빈 결과·손상 데이터·오래된 요청을 실제 상태로 처리한다", async () => {
   const client = read("public/firebase-community.js");
   const recommendationSource = client.match(/function activeRecommendationContext\(\) \{[\s\S]*?(?=\nfunction sharedFittingParameter)/)?.[0] || "";
@@ -246,7 +396,7 @@ test("추천 핏팅 날짜 캐시는 재접속·빈 결과·손상 데이터·�
   class FakeDate extends RealDate {
     constructor(...args) { super(...(args.length ? args : [now])); }
   }
-  let context = { enabled: true, sharedFitting: false, mechId: "100" };
+  let context = { enabled: true, sharedFittingRequestPending: false, mechId: "100" };
   const published = [];
   const bridge = {
     ready: Promise.resolve(true),
@@ -309,8 +459,14 @@ test("추천 핏팅 날짜 캐시는 재접속·빈 결과·손상 데이터·�
     assert.ok(predicate());
   };
 
+  context.sharedFittingRequestPending = true;
+  await api.loadRecommendations(context);
+  assert.equal(queryCount, 0, "공유 문서 로딩 중에는 추천을 조회하지 않아야 한다");
+  assert.equal(published.length, 0);
+  context.sharedFittingRequestPending = false;
   await api.loadRecommendations(context);
   assert.equal(queryCount, 1);
+  assert.equal(published.at(-1).records[0].id, "fit-100", "공유 문서 로딩 완료 후 추천을 표시해야 한다");
   api.recommendationCache.clear();
   await api.loadRecommendations(context);
   assert.equal(queryCount, 1, "같은 로컬 날짜의 재접속은 저장 캐시를 사용해야 한다");

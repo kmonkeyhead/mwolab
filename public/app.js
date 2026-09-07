@@ -169,7 +169,28 @@ const TEXT = {
     "skills.group.firepowerOther": "화력 · 그 외",
     "skills.group.operationsHeatSinks": "오퍼레이션 · 히트싱크 강화 (쿨 런 · 히트 콘테이먼트)",
     "skills.group.operationsOther": "오퍼레이션 · 그 외",
-    "ui.open": "UI",
+    "ui.open": "개인설정",
+    "ui.preferencesTitle": "개인설정",
+    "ui.initialFitting": "로드아웃 방식",
+    "ui.stockLoadout": "스톡 로드아웃",
+    "ui.stripEquipment": "장비 제거",
+    "ui.initialArmor": "아머 설정",
+    "ui.fullArmor": "풀아머",
+    "ui.noArmor": "아머 없음",
+    "ui.customArmor": "커스텀",
+    "ui.front": "전면",
+    "ui.rear": "후면",
+    "ui.presetHint": "새로 선택하는 멕에 적용합니다. 부위 한도 기준 %, 소수점 버림. 어깨·몸통 전후면 합계는 100% 이내입니다.",
+    "ui.fullArmorHint": "풀아머는 스톡 후면 아머를 유지하고 전면을 최대치로 채웁니다.",
+    "ui.tabsLabel": "개인설정 메뉴",
+    "ui.loadoutTab": "로드아웃",
+    "ui.valuesTab": "수치",
+    "ui.commonTab": "공용",
+    "ui.armorHead": "머리",
+    "ui.armorShoulders": "어깨",
+    "ui.armorTorso": "몸통",
+    "ui.armorArms": "팔",
+    "ui.armorLegs": "다리",
     "ui.valueDisplayTitle": "수치 표기",
     "ui.finalOnly": "최종 결과만 표시",
     "ui.quirkValues": "쿼크 수치 표시",
@@ -757,7 +778,28 @@ const TEXT = {
     "skills.group.firepowerOther": "Firepower · Other",
     "skills.group.operationsHeatSinks": "Operations · Heat Sinks (Cool Run · Heat Containment)",
     "skills.group.operationsOther": "Operations · Other",
-    "ui.open": "UI",
+    "ui.open": "Preferences",
+    "ui.preferencesTitle": "Preferences",
+    "ui.initialFitting": "Loadout mode",
+    "ui.stockLoadout": "Stock loadout",
+    "ui.stripEquipment": "Strip equipment",
+    "ui.initialArmor": "Armor settings",
+    "ui.fullArmor": "Full armor",
+    "ui.noArmor": "No armor",
+    "ui.customArmor": "Custom",
+    "ui.front": "Front",
+    "ui.rear": "Rear",
+    "ui.presetHint": "Applies to newly selected mechs. Percentages use location capacity, rounded down. Shoulder and torso front and rear total at most 100%.",
+    "ui.fullArmorHint": "Full armor keeps stock rear armor and fills the remaining capacity at the front.",
+    "ui.tabsLabel": "Preferences menu",
+    "ui.loadoutTab": "Loadout",
+    "ui.valuesTab": "Values",
+    "ui.commonTab": "Common",
+    "ui.armorHead": "Head",
+    "ui.armorShoulders": "Shoulders",
+    "ui.armorTorso": "Torso",
+    "ui.armorArms": "Arms",
+    "ui.armorLegs": "Legs",
     "ui.valueDisplayTitle": "Value display",
     "ui.finalOnly": "Final result only",
     "ui.quirkValues": "Show quirk value",
@@ -1560,6 +1602,14 @@ const TORSO_REAR_COMPONENTS = {
   right_torso: "right_torso_rear",
 };
 
+const INITIAL_ARMOR_GROUPS = Object.freeze([
+  { key: "head", labelKey: "ui.armorHead", components: ["head"], rear: false },
+  { key: "shoulders", labelKey: "ui.armorShoulders", components: ["left_torso", "right_torso"], rear: true },
+  { key: "torso", labelKey: "ui.armorTorso", components: ["centre_torso"], rear: true },
+  { key: "arms", labelKey: "ui.armorArms", components: ["left_arm", "right_arm"], rear: false },
+  { key: "legs", labelKey: "ui.armorLegs", components: ["left_leg", "right_leg"], rear: false },
+]);
+
 const MWO_EXPORT_COMPONENT_ORDER = [
   "centre_torso",
   "right_torso",
@@ -1931,6 +1981,7 @@ const QUIRK_VALUE_DISPLAY_STORAGE_KEY = "mwolab:quirk-value-display";
 const QUIRK_VALUE_DISPLAY_MODES = new Set(["final", "quirk", "all"]);
 const SIMPLIFY_AMMO_QUIRKS_STORAGE_KEY = "mwolab:simplify-ammo-quirks";
 const SHOW_WEAPON_TOOLTIP_QUIRKS_STORAGE_KEY = "mwolab:show-weapon-tooltip-quirks";
+const INITIAL_FITTING_STORAGE_KEY = "mwolab:initial-fitting:v1";
 const SHOW_RECOMMENDED_FITTINGS_STORAGE_KEY = "mwolab:show-recommended-fittings";
 
 function savedQuirkValueDisplayMode() {
@@ -1987,6 +2038,7 @@ const state = {
   quirkValueDisplayMode: savedQuirkValueDisplayMode(),
   simplifyAmmoQuirks: savedSimplifyAmmoQuirks(),
   showWeaponTooltipQuirks: savedShowWeaponTooltipQuirks(),
+  initialFittingPreferences: savedInitialFittingPreferences(),
   showRecommendedFittings: savedShowRecommendedFittings(),
   sharedFittingRequestPending: new URL(window.location.href).searchParams.has(SHARED_PUBLIC_FITTING_QUERY_PARAM),
   recommendedFittingsMechId: "",
@@ -3454,6 +3506,120 @@ function currentBuildAsMwoLoadout() {
 
 function savedKey(mech) {
   return `local-mwo-build:${mech.name}`;
+}
+
+function normalizeInitialFittingPreferences(value = {}) {
+  const percent = (input, fallback) => {
+    const parsed = typeof input === "number" ? input : NaN;
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(100, Math.floor(parsed))) : fallback;
+  };
+  const armor = Object.fromEntries(COMPONENT_ORDER.map((name) => {
+    const front = percent(value?.armor?.[name]?.front, 100);
+    const rear = Object.hasOwn(TORSO_REAR_COMPONENTS, name)
+      ? Math.min(100 - front, percent(value?.armor?.[name]?.rear, 0)) : 0;
+    return [name, { front, rear }];
+  }));
+  INITIAL_ARMOR_GROUPS.forEach((group) => {
+    const representative = armor[group.components[0]];
+    group.components.slice(1).forEach((name) => {
+      armor[name] = { ...representative };
+    });
+  });
+  return { mode: value?.mode === "stock" ? "stock" : "strip", armorMode: ["full", "none", "custom"].includes(value?.armorMode) ? value.armorMode : "full", armor };
+}
+
+function savedInitialFittingPreferences() {
+  try {
+    return normalizeInitialFittingPreferences(JSON.parse(localStorage.getItem(INITIAL_FITTING_STORAGE_KEY) || "null"));
+  } catch {
+    return normalizeInitialFittingPreferences();
+  }
+}
+
+function buildForMechSelection(mech) {
+  const build = buildFromLoadout(mech);
+  const preferences = state.initialFittingPreferences;
+  if (globalThis.__MWOLAB_MOBILE__ || preferences.mode !== "strip") return build;
+  stripBuildEquipment(build);
+  if (preferences.armorMode === "full") {
+    maximizeBuildArmor(mech, build);
+  } else if (preferences.armorMode === "none") {
+    stripBuildArmor(build);
+  } else {
+    for (const [name, component] of Object.entries(build.components)) {
+      const capacity = componentArmorCapacity(name, effectiveComponentDefinition(mech, build, name));
+      const allocation = preferences.armor[name];
+      component.armor = Math.floor(capacity * allocation.front / 100);
+      if (Object.hasOwn(TORSO_REAR_COMPONENTS, name)) {
+        build.rearArmor[name] = Math.floor(capacity * allocation.rear / 100);
+      }
+    }
+  }
+  return build;
+}
+
+function setInitialFittingPreference(field, value, location = null, side = null) {
+  const preferences = state.initialFittingPreferences;
+  if (field === "mode" && ["stock", "strip"].includes(value)) preferences.mode = value;
+  else if (field === "armorMode" && ["full", "none", "custom"].includes(value)) preferences.armorMode = value;
+  else if (field === "armor" && INITIAL_ARMOR_GROUPS.some((group) => group.key === location) && ["front", "rear"].includes(side)) {
+    if (!Number.isFinite(value)) return;
+    const group = INITIAL_ARMOR_GROUPS.find((entry) => entry.key === location);
+    const allocation = preferences.armor[group.components[0]];
+    const other = side === "front" ? "rear" : "front";
+    if (side === "rear" && !group.rear) return;
+    allocation[side] = Math.max(0, Math.min(group.rear ? 100 - allocation[other] : 100, Math.floor(value)));
+    group.components.forEach((name) => {
+      preferences.armor[name] = { ...allocation };
+    });
+  } else return;
+  try { localStorage.setItem(INITIAL_FITTING_STORAGE_KEY, JSON.stringify(preferences)); }
+  catch { /* Retain preferences for this session when storage is unavailable. */ }
+  renderInitialFittingPreferences();
+}
+
+function renderInitialFittingPreferences() {
+  const container = $("initial-armor-percentages");
+  if (!container) return;
+  const preferences = state.initialFittingPreferences;
+  for (const [name, field] of [["initial-fitting-mode", "mode"], ["initial-armor-mode", "armorMode"]]) {
+    document.querySelectorAll(`[name="${name}"]`).forEach((input) => {
+      input.checked = input.value === preferences[field];
+    });
+  }
+  const stripEnabled = preferences.mode === "strip";
+  const customArmorEnabled = stripEnabled && preferences.armorMode === "custom";
+  const armorSettings = $("initial-armor-settings");
+  armorSettings.classList.toggle("disabled", !stripEnabled);
+  armorSettings.querySelectorAll('[name="initial-armor-mode"]').forEach((input) => {
+    input.disabled = !stripEnabled;
+  });
+  container.classList.toggle("disabled", !customArmorEnabled);
+  if (!container.children.length) {
+    container.innerHTML = INITIAL_ARMOR_GROUPS.map((group) => {
+      const label = t(group.labelKey);
+      return `<div class="initial-armor-row"><strong>${label}</strong>${(group.rear ? ["front", "rear"] : ["front"]).map((side) => `
+        <label><span>${t(`ui.${side}`)}</span><input type="number" min="0" max="100" step="1" data-initial-armor="${group.key}" data-armor-side="${side}" aria-label="${label} ${t(`ui.${side}`)} %"><span>%</span></label>`).join("")}</div>`;
+    }).join("");
+  }
+  container.querySelectorAll("[data-initial-armor]").forEach((input) => {
+    const group = INITIAL_ARMOR_GROUPS.find((entry) => entry.key === input.dataset.initialArmor);
+    const allocation = preferences.armor[group.components[0]];
+    const side = input.dataset.armorSide;
+    input.value = allocation[side];
+    input.max = group.rear ? 100 - allocation[side === "front" ? "rear" : "front"] : 100;
+    input.disabled = !customArmorEnabled;
+  });
+}
+
+function handleInitialFittingPreferenceChange(event) {
+  const input = event.target;
+  if (input.name === "initial-fitting-mode") setInitialFittingPreference("mode", input.value);
+  else if (input.name === "initial-armor-mode") setInitialFittingPreference("armorMode", input.value);
+  else if (input.dataset.initialArmor) {
+    setInitialFittingPreference("armor", input.valueAsNumber, input.dataset.initialArmor, input.dataset.armorSide);
+    renderInitialFittingPreferences();
+  }
 }
 
 function loadBuild(mech) {
@@ -12369,7 +12535,6 @@ function renderCommunitySourcePanel() {
 }
 
 function recommendationContext() {
-  const source = activeMechlabTab()?.communitySource;
   return {
     enabled: Boolean(
       state.showRecommendedFittings
@@ -12380,7 +12545,7 @@ function recommendationContext() {
       && state.currentBuild
     ),
     mechId: state.selectedMech ? String(state.selectedMech.id) : "",
-    sharedFitting: Boolean(source || state.sharedFittingRequestPending),
+    sharedFittingRequestPending: Boolean(state.sharedFittingRequestPending),
   };
 }
 
@@ -12388,7 +12553,7 @@ let lastRecommendationContextSignature = "";
 
 function notifyRecommendationContext() {
   const context = recommendationContext();
-  const signature = `${context.enabled}:${context.mechId}:${context.sharedFitting}`;
+  const signature = `${context.enabled}:${context.mechId}:${context.sharedFittingRequestPending}`;
   if (signature === lastRecommendationContextSignature) return;
   lastRecommendationContextSignature = signature;
   if (typeof CustomEvent === "function") {
@@ -12398,7 +12563,7 @@ function notifyRecommendationContext() {
 
 function renderRecommendedFittingsPanel() {
   const context = recommendationContext();
-  if (!context.enabled || context.sharedFitting || !context.mechId) return "";
+  if (!context.enabled || context.sharedFittingRequestPending || !context.mechId) return "";
   if (state.recommendedFittingsMechId !== context.mechId || !state.recommendedFittings.length) return "";
   return `
     <aside class="recommended-fittings-panel" aria-label="${escapeHtml(t("recommendations.title"))}">
@@ -12420,9 +12585,7 @@ function renderRecommendedFittingsPanel() {
 }
 
 function renderCommunityAreaPanel() {
-  return activeMechlabTab()?.communitySource
-    ? renderCommunitySourcePanel()
-    : renderRecommendedFittingsPanel();
+  return renderCommunitySourcePanel() + renderRecommendedFittingsPanel();
 }
 
 function renderComponents(calc = calculateBuild()) {
@@ -12767,7 +12930,7 @@ function selectMech(id, { historyMode = "push", enterFitting = true, mechlabMode
       && String(state.selectedMech?.id || "") === String(nextMech.id)
       && state.currentBuild;
     const mode = mechlabMode || (wasMechlabBrowsing ? state.mechlabBrowseIntent : "replace");
-    const tab = setMechlabFitting(nextMech, preserveCurrentBuild ? state.currentBuild : loadBuild(nextMech), mode);
+    const tab = setMechlabFitting(nextMech, preserveCurrentBuild ? state.currentBuild : buildForMechSelection(nextMech), mode);
     if (!tab) return;
     if (historyMode !== "none") {
       updateMechNavigation("mech", nextMech.id, historyMode, tab.id);
@@ -12838,7 +13001,7 @@ async function applyMechNavigationFromLocation() {
   if (state.activeMainTab !== "mechlab") setMainTab("mechlab");
   if (requestedMech) {
     const historyTabId = window.history.state?.fittingTabId;
-    const tab = restoreMechlabHistoryTabRecord(requestedMech, historyTabId, loadBuild(requestedMech));
+    const tab = restoreMechlabHistoryTabRecord(requestedMech, historyTabId, buildForMechSelection(requestedMech));
     if (!tab) {
       const active = activeMechlabTab();
       if (active) {
@@ -13527,6 +13690,41 @@ function restoreCommunityFitting() {
   return true;
 }
 
+function updateMechlabTabsPublicFittingLike(id, likeCount, liked, canLike = true) {
+  let changed = false;
+  state.mechlabTabs.forEach((tab) => {
+    const source = tab.communitySource;
+    if (!source || source.id !== id) return;
+    Object.assign(source, { likeCount, liked, canLike });
+    changed = true;
+  });
+  return changed;
+}
+
+function setMechlabTabsPublicLikeCapability(canLike) {
+  communityLikeCapability = Boolean(canLike);
+  let changed = false;
+  state.mechlabTabs.forEach((tab) => {
+    const source = tab.communitySource;
+    if (!source) return;
+    source.canLike = communityLikeCapability;
+    if (!communityLikeCapability) source.liked = false;
+    changed = true;
+  });
+  return changed;
+}
+
+function openPublicFittingSources() {
+  const sources = new Map();
+  state.mechlabTabs.forEach((tab) => {
+    const source = tab.communitySource;
+    if (source?.id && !sources.has(source.id)) {
+      sources.set(source.id, { id: source.id, likeCount: source.likeCount });
+    }
+  });
+  return [...sources.values()];
+}
+
 globalThis.MwoLabCommunityBridge = Object.freeze({
   language: activeLanguage,
   ready: communityBridgeReady,
@@ -13572,28 +13770,22 @@ globalThis.MwoLabCommunityBridge = Object.freeze({
   },
   restorePublicFitting: restoreCommunityFitting,
   updatePublicFittingLike(id, likeCount, liked, canLike = true) {
-    const source = activeMechlabTab()?.communitySource;
-    if (!source || source.id !== id) return;
-    Object.assign(source, { likeCount, liked, canLike });
-    renderComponents();
+    if (updateMechlabTabsPublicFittingLike(id, likeCount, liked, canLike)) renderComponents();
   },
   updatePublicFittingAuthor(ownerUid, authorName) {
     state.mechlabTabs.forEach((tab) => {
       if (tab.communitySource?.ownerUid === ownerUid) tab.communitySource.authorName = authorName || "Pilot";
     });
-    renderComponents();
+    if (state.selectedMech && state.currentBuild) renderComponents();
   },
   setPublicLikeCapability(canLike) {
-    communityLikeCapability = Boolean(canLike);
-    const source = activeMechlabTab()?.communitySource;
-    if (!source) return;
-    source.canLike = communityLikeCapability;
-    renderComponents();
+    if (setMechlabTabsPublicLikeCapability(canLike)) renderComponents();
   },
   getPublicFittingSource() {
     const source = activeMechlabTab()?.communitySource;
     return source ? { id: source.id, likeCount: source.likeCount } : null;
   },
+  listPublicFittingSources: openPublicFittingSources,
   clearPublicFittingMode() {
     const tab = activeMechlabTab();
     if (tab) delete tab.communitySource;
@@ -13955,7 +14147,28 @@ function closeBuildActionsDialog() {
   returnTarget?.focus();
 }
 
+let activePersonalSettingsTab = "loadout";
+
+function setPersonalSettingsTab(tabName, focus = false) {
+  const normalized = ["loadout", "values", "common"].includes(tabName) ? tabName : "loadout";
+  activePersonalSettingsTab = normalized;
+  document.querySelectorAll("[data-personal-settings-tab]").forEach((button) => {
+    const active = button.dataset.personalSettingsTab === normalized;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+    if (active && focus) button.focus();
+  });
+  document.querySelectorAll("[data-personal-settings-panel]").forEach((panel) => {
+    const active = panel.dataset.personalSettingsPanel === normalized;
+    panel.hidden = !active;
+    panel.classList.toggle("active", active);
+  });
+}
+
 function renderUiSettingsDialog() {
+  renderInitialFittingPreferences();
+  setPersonalSettingsTab(activePersonalSettingsTab);
   document.querySelectorAll('[name="quirk-value-display"]').forEach((input) => {
     input.checked = input.value === state.quirkValueDisplayMode;
     input.closest(".ui-display-option")?.classList.toggle("active", input.checked);
@@ -13989,7 +14202,7 @@ function openUiSettingsDialog() {
   $("ui-settings-overlay").hidden = false;
   document.body.classList.add("ui-settings-open");
   requestAnimationFrame(() => {
-    document.querySelector('[name="quirk-value-display"]:checked')?.focus();
+    document.querySelector(`[data-personal-settings-tab="${activePersonalSettingsTab}"]`)?.focus();
   });
 }
 
@@ -14042,29 +14255,29 @@ function setShowWeaponTooltipQuirks(enabled) {
   if (activeEquipmentTooltipTarget) showEquipmentTooltip(activeEquipmentTooltipTarget);
 }
 
-function stripBuildArmor() {
-  for (const component of Object.values(state.currentBuild.components || {})) {
+function stripBuildArmor(build = state.currentBuild) {
+  for (const component of Object.values(build.components || {})) {
     component.armor = 0;
   }
-  state.currentBuild.rearArmor = Object.fromEntries(
+  build.rearArmor = Object.fromEntries(
     Object.keys(TORSO_REAR_COMPONENTS).map((name) => [name, 0]),
   );
 }
 
-function stripBuildEquipment() {
-  for (const component of Object.values(state.currentBuild.components || {})) {
+function stripBuildEquipment(build = state.currentBuild) {
+  for (const component of Object.values(build.components || {})) {
     component.items = [];
   }
-  state.currentBuild.engineHeatSinks = [];
+  build.engineHeatSinks = [];
 }
 
-function maximizeBuildArmor() {
-  state.currentBuild.rearArmor ||= {};
-  for (const [name, component] of Object.entries(state.currentBuild.components || {})) {
-    const definition = effectiveComponentDefinition(state.selectedMech, state.currentBuild, name);
+function maximizeBuildArmor(mech = state.selectedMech, build = state.currentBuild) {
+  build.rearArmor ||= {};
+  for (const [name, component] of Object.entries(build.components || {})) {
+    const definition = effectiveComponentDefinition(mech, build, name);
     const capacity = componentArmorCapacity(name, definition);
     const rear = Object.hasOwn(TORSO_REAR_COMPONENTS, name)
-      ? Math.min(capacity, Math.max(0, number(state.currentBuild.rearArmor[name])))
+      ? Math.min(capacity, Math.max(0, number(build.rearArmor[name])))
       : 0;
     component.armor = Math.max(0, capacity - rear);
   }
@@ -16346,6 +16559,14 @@ function bindEvents() {
   $("close-mechlab-compact-list").addEventListener("click", closeMechlabCompactList);
   $("mechlab-compact-search").addEventListener("input", renderMechlabCompactList);
   $("open-ui-settings").addEventListener("click", openUiSettingsDialog);
+  $("ui-settings-overlay").addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-personal-settings-tab]");
+    if (tab) setPersonalSettingsTab(tab.dataset.personalSettingsTab, true);
+  });
+  $("ui-settings-overlay").addEventListener("change", handleInitialFittingPreferenceChange);
+  $("initial-armor-percentages").addEventListener("wheel", (event) => {
+    if (event.target.matches("input[type=number]")) event.preventDefault();
+  }, { passive: false });
   $("close-ui-settings-x").addEventListener("click", closeUiSettingsDialog);
   $("close-ui-settings").addEventListener("click", closeUiSettingsDialog);
   $("ui-settings-overlay").addEventListener("click", (event) => {
@@ -17285,6 +17506,11 @@ if (globalThis.__MWOLAB_TEST__) {
     communityInstalledWeaponSummary,
     communityRepresentativeWeapons,
     recommendationContext,
+    normalizeInitialFittingPreferences,
+    buildForMechSelection,
+    setInitialFittingPreference,
+    stripBuildEquipment,
+    maximizeBuildArmor,
     mechSpecialFeatures,
     mechMatchesQuirkFilters,
     normalizeMechHardpointFilterMinimum,
@@ -17301,6 +17527,9 @@ if (globalThis.__MWOLAB_TEST__) {
     decodeSharedLoadoutValue,
     replaceSharedLoadoutNavigation,
     publicFittingUrl,
+    updateMechlabTabsPublicFittingLike,
+    setMechlabTabsPublicLikeCapability,
+    openPublicFittingSources,
     restoreMechlabHistorySnapshot,
     applyMechlabHistorySnapshotToTab,
   });

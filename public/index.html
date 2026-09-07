@@ -24,6 +24,7 @@
         <button class="tab-button" type="button" data-main-tab="info" aria-controls="tab-info" data-i18n="tabs.info">정보</button>
         <button class="tab-button" type="button" data-main-tab="compare" aria-controls="tab-compare" data-i18n="tabs.compare">비교하기</button>
         <button class="tab-button" type="button" data-main-tab="stats" aria-controls="tab-stats" data-i18n="tabs.stats">통계</button>
+        <button id="open-ui-settings" class="personal-settings-button" type="button" data-i18n="ui.open" aria-haspopup="dialog" aria-controls="ui-settings-overlay">개인설정</button>
         <div class="topbar-account-actions">
           <button id="community-login" class="community-login" type="button" aria-label="Google 로그인" aria-live="polite" aria-controls="community-account-menu" aria-expanded="false">Google 로그인</button>
           <div id="community-account-menu" class="community-account-menu" role="menu" hidden>
@@ -79,9 +80,7 @@
                     <div id="mechlab-fitting-tab-list" class="mechlab-fitting-tab-list" role="presentation"></div>
                     <button id="add-mechlab-fitting-tab" class="add-mechlab-fitting-tab" type="button" role="tab" aria-selected="false" tabindex="-1" aria-label="핏팅 탭 추가" data-i18n-aria-label="mechlab.addFittingTab">+</button>
                   </div>
-                  <div class="actions">
-                    <button id="open-ui-settings" type="button" data-i18n="ui.open">UI</button>
-                  </div>
+
                 </section>
 
                 <section id="mechlab-fitting-content" class="mechlab-grid">
@@ -545,10 +544,40 @@
     <div id="ui-settings-overlay" class="build-actions-overlay ui-settings-overlay" hidden>
       <section class="build-actions-dialog ui-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="ui-settings-title">
         <header>
-          <h2 id="ui-settings-title" data-i18n="ui.valueDisplayTitle">수치 표기</h2>
+          <h2 id="ui-settings-title" data-i18n="ui.preferencesTitle">개인설정</h2>
           <button id="close-ui-settings-x" class="build-actions-close" type="button" aria-label="Close">X</button>
         </header>
-        <div class="ui-display-options" role="radiogroup" aria-labelledby="ui-settings-title">
+        <div class="personal-settings-tabs" role="tablist" aria-label="개인설정 메뉴" data-i18n-aria-label="ui.tabsLabel">
+          <button id="personal-settings-loadout-tab" type="button" role="tab" aria-selected="true" aria-controls="personal-settings-loadout" data-personal-settings-tab="loadout" data-i18n="ui.loadoutTab">로드아웃</button>
+          <button id="personal-settings-values-tab" type="button" role="tab" aria-selected="false" aria-controls="personal-settings-values" data-personal-settings-tab="values" data-i18n="ui.valuesTab">수치</button>
+          <button id="personal-settings-common-tab" type="button" role="tab" aria-selected="false" aria-controls="personal-settings-common" data-personal-settings-tab="common" data-i18n="ui.commonTab">공용</button>
+        </div>
+        <div class="personal-settings-content">
+        <section id="personal-settings-loadout" class="personal-settings-panel active" role="tabpanel" aria-labelledby="personal-settings-loadout-tab" data-personal-settings-panel="loadout">
+        <section class="initial-fitting-settings">
+          <div class="preference-setting-block">
+          <h3 data-i18n="ui.initialFitting">로드아웃 방식</h3>
+          <div class="initial-fitting-options">
+            <label><input type="radio" name="initial-fitting-mode" value="stock"><span data-i18n="ui.stockLoadout">스톡 로드아웃</span></label>
+            <label><input type="radio" name="initial-fitting-mode" value="strip"><span data-i18n="ui.stripEquipment">장비 제거</span></label>
+          </div>
+          </div>
+          <div id="initial-armor-settings" class="preference-setting-block">
+            <h3 data-i18n="ui.initialArmor">아머 설정</h3>
+            <div class="initial-fitting-options">
+              <label><input type="radio" name="initial-armor-mode" value="full"><span data-i18n="ui.fullArmor">풀아머</span></label>
+              <label><input type="radio" name="initial-armor-mode" value="none"><span data-i18n="ui.noArmor">아머 없음</span></label>
+              <label><input type="radio" name="initial-armor-mode" value="custom"><span data-i18n="ui.customArmor">커스텀</span></label>
+            </div>
+            <p class="muted" data-i18n="ui.fullArmorHint">풀아머는 스톡 후면 아머를 유지하고 전면을 최대치로 채웁니다.</p>
+            <div id="initial-armor-percentages"></div>
+          </div>
+          <p class="muted" data-i18n="ui.presetHint">새로 선택하는 멕에 적용합니다. 부위 한도 기준 %, 소수점 버림. 어깨·몸통 전후면 합계는 100% 이내입니다.</p>
+        </section>
+        </section>
+        <section id="personal-settings-values" class="personal-settings-panel" role="tabpanel" aria-labelledby="personal-settings-values-tab" data-personal-settings-panel="values" hidden>
+        <h3 id="ui-value-display-title" data-i18n="ui.valueDisplayTitle">수치 표기</h3>
+        <div class="ui-display-options" role="radiogroup" aria-labelledby="ui-value-display-title">
           <label class="ui-display-option">
             <input type="radio" name="quirk-value-display" value="final">
             <span data-i18n="ui.finalOnly">최종 결과만 표시</span>
@@ -562,6 +591,8 @@
             <span data-i18n="ui.allValues">모든 수치 표시</span>
           </label>
         </div>
+        </section>
+        <section id="personal-settings-common" class="personal-settings-panel" role="tabpanel" aria-labelledby="personal-settings-common-tab" data-personal-settings-panel="common" hidden>
         <label class="ui-display-option ui-toggle-option">
           <input id="simplify-ammo-quirks" type="checkbox">
           <span data-i18n="ui.simplifyAmmoQuirks">탄약 쿼크 표시 간소화</span>
@@ -577,6 +608,8 @@
           <span data-i18n="ui.showRecommendedFittings">추천 핏팅 보이기</span>
           <strong id="show-recommended-fittings-state" class="ui-toggle-state">ON</strong>
         </label>
+        </section>
+        </div>
         <button id="close-ui-settings" class="build-actions-cancel" type="button" data-i18n="ui.close">닫기</button>
       </section>
     </div>

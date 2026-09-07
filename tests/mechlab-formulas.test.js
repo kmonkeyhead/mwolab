@@ -309,14 +309,141 @@ test("장비 툴팁 적용 효과 설정은 기본 ON이며 저장값을 복원�
   assert.equal(loadMechLab({ storageReadError: true }).state.showWeaponTooltipQuirks, true);
 });
 
+test("개인설정 초기 피팅은 장비 제거·풀아머 기본값과 저장 복원·부위 한도를 유지한다", () => {
+  const key = "mwolab:initial-fitting:v1";
+  const writes = [];
+  const local = loadMechLab({ storageWrites: writes });
+  assert.equal(local.state.initialFittingPreferences.mode, "strip");
+  assert.equal(local.state.initialFittingPreferences.armorMode, "full");
+  local.setInitialFittingPreference("armorMode", "custom");
+  local.setInitialFittingPreference("armor", 75, "torso", "front");
+  local.setInitialFittingPreference("armor", 40, "torso", "rear");
+  assert.equal(local.state.initialFittingPreferences.armor.centre_torso.rear, 25);
+  local.setInitialFittingPreference("armor", 90, "torso", "front");
+  assert.equal(local.state.initialFittingPreferences.armor.centre_torso.front, 75);
+  local.setInitialFittingPreference("armor", -5, "head", "front");
+  assert.equal(local.state.initialFittingPreferences.armor.head.front, 0);
+  local.setInitialFittingPreference("armor", 60, "shoulders", "front");
+  local.setInitialFittingPreference("armor", 30, "shoulders", "rear");
+  assert.deepEqual(
+    local.state.initialFittingPreferences.armor.left_torso,
+    local.state.initialFittingPreferences.armor.right_torso,
+  );
+  assert.equal(local.state.initialFittingPreferences.armor.left_torso.front, 60);
+  assert.equal(local.state.initialFittingPreferences.armor.left_torso.rear, 30);
+  const restored = loadMechLab({ storageValues: { [key]: writes.at(-1)[1] } });
+  assert.equal(JSON.stringify(restored.state.initialFittingPreferences), JSON.stringify(local.state.initialFittingPreferences));
+  for (const armorMode of ["full", "none", "custom"]) {
+    local.setInitialFittingPreference("armorMode", armorMode);
+    const reopened = loadMechLab({ storageValues: { [key]: writes.at(-1)[1] } });
+    assert.equal(reopened.state.initialFittingPreferences.mode, "strip");
+    assert.equal(reopened.state.initialFittingPreferences.armorMode, armorMode);
+    assert.equal(reopened.state.initialFittingPreferences.armor.centre_torso.front, 75);
+    assert.equal(reopened.state.initialFittingPreferences.armor.centre_torso.rear, 25);
+  }
+  assert.equal(loadMechLab({ storageValues: { [key]: "broken" } }).state.initialFittingPreferences.mode, "strip");
+  assert.equal(loadMechLab({ storageReadError: true }).state.initialFittingPreferences.mode, "strip");
+  const unavailable = loadMechLab({ storageWriteError: true });
+  unavailable.setInitialFittingPreference("mode", "stock");
+  assert.equal(unavailable.state.initialFittingPreferences.mode, "stock");
+});
+
+test("새 멕 프리셋은 장비만 제거하고 선택 멕의 아머 한도·스톡 후면을 사용한다", () => {
+  const local = loadMechLab();
+  const mech = { id: 1, stock_loadout: "preset", definition: { components: {
+    head: { hp: 3 }, centre_torso: { hp: 21 }, left_arm: { hp: 10, fixed: [999] },
+  } } };
+  const stock = { components: {
+    head: { armor: 8, items: [{ item_id: 1 }] },
+    centre_torso: { armor: 20, items: [{ item_id: 2 }] },
+    centre_torso_rear: { armor: 6 },
+    left_arm: { armor: 10, items: [{ item_id: 3 }] },
+  }, upgrades: { armor: { ItemID: 123 } } };
+  local.state.loadouts = { preset: stock };
+  const original = JSON.stringify(stock);
+  const defaultFull = local.buildForMechSelection(mech);
+  assert.equal(defaultFull.components.head.armor, 18);
+  assert.equal(defaultFull.components.centre_torso.armor, 36);
+  assert.equal(defaultFull.rearArmor.centre_torso, 6);
+  assert.equal(defaultFull.components.centre_torso.items.length, 0);
+  local.setInitialFittingPreference("mode", "stock");
+  const normal = local.buildForMechSelection(mech);
+  assert.equal(normal.components.head.items.length, 1);
+  assert.equal(normal.components.centre_torso.armor, 20);
+  local.setInitialFittingPreference("mode", "strip");
+  // The selected old mech must not supply the newly loaded mech's capacity.
+  local.state.selectedMech = { definition: { components: { centre_torso: { hp: 100 } } } };
+  const full = local.buildForMechSelection(mech);
+  assert.equal(full.components.head.armor, 18);
+  assert.equal(full.components.centre_torso.armor, 36);
+  assert.equal(full.rearArmor.centre_torso, 6);
+  assert.equal(full.components.left_arm.armor, 20);
+  assert.equal(full.components.centre_torso.items.length, 0);
+  assert.equal(full.engineHeatSinks.length, 0);
+  assert.equal(full.upgrades.armor.ItemID, 123);
+  assert.deepEqual(mech.definition.components.left_arm.fixed, [999]);
+  local.setInitialFittingPreference("armorMode", "custom");
+  local.setInitialFittingPreference("armor", 75, "torso", "front");
+  local.setInitialFittingPreference("armor", 25, "torso", "rear");
+  local.setInitialFittingPreference("armor", 50, "head", "front");
+  const custom = local.buildForMechSelection(mech);
+  assert.equal(custom.components.centre_torso.armor, 31);
+  assert.equal(custom.rearArmor.centre_torso, 10);
+  assert.equal(custom.components.head.armor, 9);
+  local.setInitialFittingPreference("armorMode", "none");
+  const unarmored = local.buildForMechSelection(mech);
+  assert.ok(Object.values(unarmored.components).every((part) => part.armor === 0 && part.items.length === 0));
+  assert.ok(Object.values(unarmored.rearArmor).every((armor) => armor === 0));
+  local.setInitialFittingPreference("armorMode", "custom");
+  assert.equal(local.buildForMechSelection(mech).components.centre_torso.armor, 31);
+  assert.equal(JSON.stringify(stock), original);
+  const mobile = loadMechLab({ mobile: true });
+  mobile.state.loadouts = { preset: stock };
+  mobile.setInitialFittingPreference("mode", "strip");
+  assert.equal(mobile.buildForMechSelection(mech).components.head.items.length, 1);
+});
+
+test("개인설정은 프로필 왼쪽에 있고 새 선택에만 적용하며 IMPORT·공유·스톡 기준 계산은 유지한다", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "public", "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "public", "app.js"), "utf8");
+  const styles = fs.readFileSync(path.join(__dirname, "..", "public", "styles.css"), "utf8");
+  assert.equal((html.match(/id="open-ui-settings"/g) || []).length, 1);
+  assert.ok(html.indexOf('id="open-ui-settings"') < html.indexOf('id="community-login"'));
+  assert.ok(html.indexOf('id="open-ui-settings"') < html.indexOf('class="topbar-account-actions"'));
+  assert.match(html, /data-i18n="ui.open"[^>]*>개인설정/);
+  assert.match(html, /data-i18n="ui.initialFitting">로드아웃 방식/);
+  assert.match(html, /data-personal-settings-tab="loadout"[^>]*>로드아웃/);
+  assert.match(html, /data-personal-settings-tab="values"[^>]*>수치/);
+  assert.match(html, /data-personal-settings-tab="common"[^>]*>공용/);
+  assert.match(html, /id="initial-armor-settings"(?![^>]*hidden)/);
+  assert.match(html, /id="initial-armor-percentages"(?![^>]*hidden)/);
+  assert.doesNotMatch(html, /<fieldset[^>]+(?:initial-fitting-settings|initial-armor-settings)/);
+  const armorGroups = app.slice(app.indexOf("const INITIAL_ARMOR_GROUPS"), app.indexOf("const MWO_EXPORT_COMPONENT_ORDER"));
+  const groupOrder = ["head", "shoulders", "torso", "arms", "legs"];
+  assert.deepEqual([...armorGroups.matchAll(/key: "([^"]+)"/g)].map((match) => match[1]), groupOrder);
+  assert.match(app, /armorSettings\.classList\.toggle\("disabled", !stripEnabled\)/);
+  assert.match(app, /input\.disabled = !stripEnabled/);
+  assert.match(app, /const customArmorEnabled = stripEnabled && preferences\.armorMode === "custom"/);
+  assert.match(app, /container\.classList\.toggle\("disabled", !customArmorEnabled\)/);
+  assert.match(app, /input\.disabled = !customArmorEnabled/);
+  assert.match(app, /function setPersonalSettingsTab[\s\S]*data-personal-settings-panel/);
+  assert.match(styles, /\.ui-settings-dialog \{[\s\S]*height: min\(42rem, calc\(100dvh - 2rem\)\)/);
+  assert.match(styles, /\.initial-fitting-options input:checked \+ span/);
+  assert.match(app, /preserveCurrentBuild \? state.currentBuild : buildForMechSelection\(nextMech\)/);
+  assert.match(app, /function loadBuild\(mech\) \{\s*return buildFromLoadout\(mech\)/);
+  const imported = app.match(/function importMwoCode\([\s\S]*?(?=\nfunction describeMwoCode)/)[0];
+  assert.doesNotMatch(imported, /buildForMechSelection/);
+  assert.match(imported, /buildFromMwoCode\(decoded, mech\)/);
+});
+
 test("추천 핏팅 표시 설정은 기본 ON이며 저장값과 fitting URL 판정을 사용한다", () => {
   const key = "mwolab:show-recommended-fittings";
   assert.equal(api.state.showRecommendedFittings, true);
   assert.equal(loadMechLab({ storageValues: { [key]: "true" } }).state.showRecommendedFittings, true);
   assert.equal(loadMechLab({ storageValues: { [key]: "false" } }).state.showRecommendedFittings, false);
   assert.equal(loadMechLab({ storageReadError: true }).state.showRecommendedFittings, true);
-  assert.equal(loadMechLab({ windowHref: "http://localhost/?lang=en&fitting=document-id" }).recommendationContext().sharedFitting, true);
-  assert.equal(loadMechLab({ windowHref: "http://localhost/?lang=en&loadout=code" }).recommendationContext().sharedFitting, false);
+  assert.equal(loadMechLab({ windowHref: "http://localhost/?lang=en&fitting=document-id" }).recommendationContext().sharedFittingRequestPending, true);
+  assert.equal(loadMechLab({ windowHref: "http://localhost/?lang=en&loadout=code" }).recommendationContext().sharedFittingRequestPending, false);
   const contextApi = loadMechLab();
   contextApi.state.selectedMech = { id: 713 };
   contextApi.state.currentBuild = { components: {} };
@@ -533,6 +660,35 @@ test("URL 공유 핏팅 원상복귀와 이전 History 복원 경로는 공유 �
   assert.equal(tab.communitySource.liked, false);
   snapshot.build.marker = "changed-after-restore";
   assert.equal(tab.build.marker, "previous");
+});
+
+test("공유 핏팅 좋아요 상태와 로그인 가능 여부는 같은 문서의 모든 탭에 동기화한다", () => {
+  const previousTabs = api.state.mechlabTabs;
+  try {
+    const first = { communitySource: { id: "public-a", likeCount: 1, liked: false, canLike: false } };
+    const second = { communitySource: { id: "public-b", likeCount: 2, liked: true, canLike: true } };
+    const duplicate = { communitySource: { id: "public-a", likeCount: 1, liked: false, canLike: false } };
+    api.state.mechlabTabs = [first, second, duplicate];
+
+    assert.equal(api.updateMechlabTabsPublicFittingLike("public-a", 9, true, true), true);
+    assert.deepEqual(
+      [first.communitySource, duplicate.communitySource].map(({ likeCount, liked, canLike }) => ({ likeCount, liked, canLike })),
+      [{ likeCount: 9, liked: true, canLike: true }, { likeCount: 9, liked: true, canLike: true }],
+    );
+    assert.equal(second.communitySource.likeCount, 2);
+    assert.equal(
+      JSON.stringify(api.openPublicFittingSources()),
+      JSON.stringify([{ id: "public-a", likeCount: 9 }, { id: "public-b", likeCount: 2 }]),
+    );
+
+    assert.equal(api.setMechlabTabsPublicLikeCapability(false), true);
+    assert.ok(api.state.mechlabTabs.every((entry) => entry.communitySource.canLike === false));
+    assert.ok(api.state.mechlabTabs.every((entry) => entry.communitySource.liked === false));
+    assert.equal(api.setMechlabTabsPublicLikeCapability(true), true);
+    assert.ok(api.state.mechlabTabs.every((entry) => entry.communitySource.canLike === true));
+  } finally {
+    api.state.mechlabTabs = previousTabs;
+  }
 });
 
 test("멕랩 핏팅 탭은 중복 멕의 독립 빌드를 생성하고 활성 탭만 교체한다", () => {

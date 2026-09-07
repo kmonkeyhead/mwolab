@@ -571,10 +571,15 @@ function openRecommendationDialog(id, trigger) {
   document.body.classList.add("recommended-fitting-open");
   elements.recommendationClose.focus();
 }
-function applyRecommendation() {
+async function applyRecommendation() {
   if (!recommendationDialogRecord?.valid) return;
-  bridge.openPublicFitting({ ...recommendationDialogRecord, canLike: Boolean(currentUser) });
+  const record = recommendationDialogRecord;
+  bridge.openSharedFitting({ ...record, canLike: Boolean(currentUser) });
   closeRecommendationDialog();
+  const likeState = syncActiveSourceLikeState();
+  await hydrateRecordAuthors([record]);
+  bridge.updatePublicFittingAuthor?.(record.ownerUid, record.authorName || "Pilot");
+  await likeState;
 }
 async function openCommunity(mode, trigger) {
   loadRequestGeneration += 1;
@@ -629,7 +634,7 @@ function normalizeSnapshot(snapshot, source) {
 }
 
 function activeRecommendationContext() {
-  return bridge?.recommendationContext?.() || { enabled: false, mechId: "", sharedFitting: false };
+  return bridge?.recommendationContext?.() || { enabled: false, mechId: "", sharedFittingRequestPending: false };
 }
 
 function recommendationRecordData(record) {
@@ -643,7 +648,7 @@ function recommendationRecordData(record) {
 
 function publishRecommendations(mechId, recordList) {
   const context = activeRecommendationContext();
-  if (!context.enabled || context.sharedFitting || String(context.mechId) !== String(mechId)) return;
+  if (!context.enabled || context.sharedFittingRequestPending || String(context.mechId) !== String(mechId)) return;
   bridge.setRecommendedFittings?.(mechId, recordList.filter((record) => record.valid).map(recommendationRecordData));
 }
 
@@ -749,7 +754,7 @@ function invalidateRecommendations(mechId) {
   recommendationRequests.delete(normalizedMechId);
   removeStoredRecommendations(normalizedMechId);
   const context = activeRecommendationContext();
-  if (!context.enabled || context.sharedFitting || String(context.mechId) !== normalizedMechId) return;
+  if (!context.enabled || context.sharedFittingRequestPending || String(context.mechId) !== normalizedMechId) return;
   bridge.setRecommendedFittings?.(normalizedMechId, []);
   void loadRecommendations(context);
 }
@@ -758,7 +763,7 @@ async function loadRecommendations(context = activeRecommendationContext()) {
   const mechId = String(context?.mechId || "");
   const cacheDay = rollRecommendationCacheDay();
   const generation = recommendationGenerations.get(mechId) || 0;
-  if (!context?.enabled || context.sharedFitting || !mechId) return;
+  if (!context?.enabled || context.sharedFittingRequestPending || !mechId) return;
   if (recommendationCache.has(mechId)) {
     publishRecommendations(mechId, recommendationCache.get(mechId));
     return;
@@ -768,7 +773,7 @@ async function loadRecommendations(context = activeRecommendationContext()) {
     bridge?.ready || Promise.resolve(false),
   ]);
   const current = activeRecommendationContext();
-  if (!firebaseAvailable || !appReady || !firebaseApi || !db || !current.enabled || current.sharedFitting || String(current.mechId) !== mechId) return;
+  if (!firebaseAvailable || !appReady || !firebaseApi || !db || !current.enabled || current.sharedFittingRequestPending || String(current.mechId) !== mechId) return;
   if (
     rollRecommendationCacheDay() !== cacheDay
     || (recommendationGenerations.get(mechId) || 0) !== generation
@@ -1397,12 +1402,13 @@ async function ensureLikeState(id) {
     pendingLikeStateRequests.delete(key);
   }
 }
-async function syncActiveSourceLikeState() {
-  const source = bridge.getPublicFittingSource?.();
-  if (!currentUser || !source || !firebaseApi || !db) return;
+async function syncSourceLikeState(source) {
+  const user = currentUser;
+  if (!user || !source || !firebaseApi || !db) return;
   try {
-    const snapshot = await firebaseApi.getDoc(firebaseApi.doc(db, "fittings", source.id, "likes", currentUser.uid));
-    const key = `${currentUser.uid}:${source.id}`;
+    const snapshot = await firebaseApi.getDoc(firebaseApi.doc(db, "fittings", source.id, "likes", user.uid));
+    if (currentUser?.uid !== user.uid) return;
+    const key = `${user.uid}:${source.id}`;
     const liked = snapshot.exists();
     if (liked) likedFittingKeys.add(key);
     else likedFittingKeys.delete(key);
@@ -1410,6 +1416,15 @@ async function syncActiveSourceLikeState() {
   } catch {
     // The source panel remains usable and the transaction will resolve the state on click.
   }
+}
+
+async function syncActiveSourceLikeState() {
+  return syncSourceLikeState(bridge.getPublicFittingSource?.());
+}
+
+async function syncOpenSourceLikeStates() {
+  const sources = bridge.listPublicFittingSources?.() || [];
+  await Promise.all(sources.map(syncSourceLikeState));
 }
 async function toggleLike(id) {
   if (!currentUser || !firebaseApi || !db) return;
@@ -1492,7 +1507,10 @@ function applyFitting(id) {
   if (!record?.valid) return;
   const payload = { ...record, canLike: Boolean(currentUser) };
   if (activeBrowserTab === "local") bridge.openLocalFitting(payload);
-  else bridge.openPublicFitting(payload);
+  else {
+    bridge.openSharedFitting(payload);
+    ensureLikeState(id);
+  }
   closeCommunity();
 }
 function closeAllMenus(except = null) {
@@ -1741,7 +1759,7 @@ async function initializeFirebase() {
       bridge.setPublicLikeCapability?.(Boolean(user));
       if (user) {
         initializeCurrentProfile(user);
-        syncActiveSourceLikeState();
+        syncOpenSourceLikeStates();
         if (!elements.overlay.hidden && activeMode === "browse" && activeBrowserTab !== "mine") renderBrowser();
       } else {
         profileCache.clear();
