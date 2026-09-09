@@ -75,7 +75,7 @@
       export: "EXPORT",
     },
   };
-  const language = bridge.language() === "en" ? "en" : "kr";
+  let language = bridge.language() === "en" ? "en" : "kr";
   const t = (key) => copy[language][key] || copy.kr[key] || key;
 
   function escapeHtml(value) {
@@ -155,7 +155,8 @@
   });
   drawer.querySelector("header").appendChild(drawerClose);
   const drawerBody = drawer.querySelector(".mobile-overlay-body");
-  drawerBody.appendChild(element("button", "", { type: "button", text: t("mechList"), "data-mobile-open-list": "" }));
+  const drawerMechListButton = element("button", "", { type: "button", text: t("mechList"), "data-mobile-open-list": "" });
+  drawerBody.appendChild(drawerMechListButton);
   const languageBox = element("div", "mobile-drawer-language");
   [
     ["kr", "한국어"],
@@ -163,7 +164,11 @@
   ].forEach(([value, label]) => {
     const url = new URL(window.location.href);
     url.searchParams.set("lang", value);
-    languageBox.appendChild(element("a", "", { href: `${url.pathname}${url.search}${url.hash}`, text: label }));
+    languageBox.appendChild(element("a", "", {
+      href: `${url.pathname}${url.search}${url.hash}`,
+      text: label,
+      "data-lang-link": value,
+    }));
   });
   drawerBody.appendChild(languageBox);
   drawerBody.appendChild(element("a", "", {
@@ -684,6 +689,14 @@
       event.stopImmediatePropagation();
       return;
     }
+    const emptyEngineSlot = event.target.closest("[data-empty-engine-slot]");
+    if (emptyEngineSlot) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      pendingRemovalTap = null;
+      openPicker("centre_torso", "engines");
+      return;
+    }
     const installed = event.target.closest("[data-loadout-item]");
     if (installed) {
       event.preventDefault();
@@ -747,6 +760,35 @@
   window.addEventListener("mwolab:mobile-shared-fitting-loaded", () => {
     closeOverlay(mechListOverlay);
     resetCanvasForSelectedMech(true);
+    renderFittingStatus();
+  });
+  window.addEventListener("mwolab:language-change", (event) => {
+    const nextLanguage = event.detail?.language === "en" ? "en" : "kr";
+    if (nextLanguage === language) return;
+    language = nextLanguage;
+    document.documentElement.lang = language === "en" ? "en" : "ko";
+    menuButton.setAttribute("aria-label", t("menu"));
+    bottomNav.querySelector('[data-mobile-action="overview"]').textContent = t("overview");
+    bottomNav.querySelector('[data-mobile-action="tools"]').textContent = t("tools");
+    bottomNav.querySelector('[data-mobile-action="upgrades"]').textContent = t("upgrades");
+    bottomNav.querySelector('[data-mobile-action="save"]').textContent = t("saveLoad");
+    drawer.querySelector("h2").textContent = t("menu");
+    drawerClose.setAttribute("aria-label", t("close"));
+    drawerMechListButton.textContent = t("mechList");
+    mechListOverlay.querySelector("h2").textContent = t("mechList");
+    mechSearch.placeholder = t("search");
+    mechSearch.setAttribute("aria-label", t("search"));
+    overviewOverlay.querySelector("h2").textContent = t("overview");
+    upgradeOverlay.querySelector("h2").textContent = t("upgrades");
+    saveOverlay.querySelector("h2").textContent = t("saveLoad");
+    [mechListOverlay, pickerOverlay, overviewOverlay, upgradeOverlay, saveOverlay].forEach((overlay) => {
+      const close = overlay.querySelector(".mobile-overlay-close");
+      if (close) close.textContent = t("close");
+    });
+    if (toolsClose) toolsClose.textContent = t("close");
+    if (!mechListOverlay.hidden) renderMechList();
+    if (!pickerOverlay.hidden) renderPicker();
+    if (!upgradeOverlay.hidden) renderUpgradeSlotStatus();
     renderFittingStatus();
   });
 

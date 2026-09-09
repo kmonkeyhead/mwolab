@@ -80,7 +80,7 @@ function detectLanguage() {
   return DEFAULT_LANGUAGE;
 }
 
-const activeLanguage = detectLanguage();
+let activeLanguage = detectLanguage();
 
 const TEXT = {
   kr: {
@@ -629,6 +629,8 @@ const TEXT = {
     "stats.quirkSelect": "쿼크 선택",
     "equipment.noItem": "장비가 선택되지 않았습니다",
     "build.noEngine": "엔진 없음",
+    "build.emptyEngineSlot": "엔진 공간",
+    "build.engineSlotOnly": "엔진 공간에는 엔진만 장착할 수 있습니다",
     "build.engineOutside": "엔진 {rating}이 허용 범위 {min}-{max} 밖입니다",
     "build.engineTorsoOnly": "엔진은 중앙 몸통에만 장착할 수 있습니다",
     "build.engineFixed": "이 옴니멕의 엔진은 고정되어 있습니다",
@@ -1238,6 +1240,8 @@ const TEXT = {
     "stats.quirkSelect": "Select quirk",
     "equipment.noItem": "No item selected",
     "build.noEngine": "No engine",
+    "build.emptyEngineSlot": "ENGINE BAY",
+    "build.engineSlotOnly": "Only engines can be installed in the engine bay",
     "build.engineOutside": "Engine {rating} outside {min}-{max}",
     "build.engineTorsoOnly": "Engines can only be installed in the center torso",
     "build.engineFixed": "This OmniMech has a fixed engine",
@@ -1316,6 +1320,12 @@ function languageUrl(language) {
   url.searchParams.set("lang", language);
   remainingParams.forEach(([name, value]) => url.searchParams.append(name, value));
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function refreshLanguageLinkUrls() {
+  document.querySelectorAll("[data-lang-link]").forEach((element) => {
+    element.href = languageUrl(element.dataset.langLink);
+  });
 }
 
 function openDonateDialog(event) {
@@ -1431,6 +1441,7 @@ function updatePublicFittingNavigation(fittingId, mode = "push") {
   };
   if (mode === "replace") window.history.replaceState(historyState, "", publicFittingUrl(fittingId));
   else window.history.pushState(historyState, "", publicFittingUrl(fittingId));
+  refreshLanguageLinkUrls();
 }
 
 function captureMechlabHistorySnapshot() {
@@ -1503,6 +1514,7 @@ function updateMainTabNavigation(tabName, mode = "push", mechId = null) {
   const url = mainTabNavigationUrl(normalizedTab, mechId);
   if (mode === "replace") window.history.replaceState(historyState, "", url);
   else window.history.pushState(historyState, "", url);
+  refreshLanguageLinkUrls();
   if (hadSharedFittingRequest) cancelSharedFittingRequest();
 }
 
@@ -1518,6 +1530,7 @@ function updateMechNavigation(view, mechId = "", mode = "push", fittingTabId = n
   const url = mechNavigationUrl(normalizedMechId);
   if (mode === "replace") window.history.replaceState(historyState, "", url);
   else window.history.pushState(historyState, "", url);
+  refreshLanguageLinkUrls();
   if (hadSharedFittingRequest) cancelSharedFittingRequest();
 }
 
@@ -1547,6 +1560,7 @@ async function replaceSharedLoadoutNavigation(code, sourceValue = null) {
     "",
     url,
   );
+  refreshLanguageLinkUrls();
   return true;
 }
 
@@ -1572,10 +1586,10 @@ function applyStaticTranslations() {
   });
   document.querySelectorAll("[data-lang-link]").forEach((element) => {
     const language = element.dataset.langLink;
-    element.href = languageUrl(language);
     element.classList.toggle("active", language === activeLanguage);
     element.setAttribute("aria-current", language === activeLanguage ? "true" : "false");
   });
+  refreshLanguageLinkUrls();
   if (activeLanguage === "kr") {
     $("donate-link").setAttribute("aria-haspopup", "dialog");
     $("donate-link").setAttribute("aria-controls", "donate-overlay");
@@ -1583,6 +1597,82 @@ function applyStaticTranslations() {
     $("donate-link").removeAttribute("aria-haspopup");
     $("donate-link").removeAttribute("aria-controls");
   }
+}
+
+function translatedValueForLanguage(value, fromLanguage, toLanguage) {
+  const key = Object.keys(TEXT[fromLanguage] || {}).find((candidate) => TEXT[fromLanguage][candidate] === value);
+  return key ? TEXT[toLanguage]?.[key] ?? value : value;
+}
+
+function refreshOpenDialogTranslations() {
+  const isOpen = (id) => {
+    const overlay = $(id);
+    return Boolean(overlay && !overlay.hidden);
+  };
+  if (isOpen("loadout-code-overlay")) {
+    const importing = state.loadoutCodeMode === "import";
+    $("loadout-code-title").textContent = t(importing ? "loadout.importTitle" : "loadout.exportTitle");
+    $("loadout-code-description").textContent = t(
+      importing ? "loadout.importDescription" : "loadout.exportDescription",
+    );
+    $("loadout-code-text").placeholder = importing ? t("loadout.importPlaceholder") : "";
+    const urlText = $("loadout-url-text");
+    if (!importing && urlText?.value) {
+      const url = new URL(urlText.value, window.location.href);
+      url.searchParams.set("lang", activeLanguage);
+      urlText.value = url.href;
+    }
+  }
+  if (isOpen("local-build-overlay")) {
+    const saving = state.localBuildMode === "save";
+    $("local-build-title").textContent = t(saving ? "localBuild.saveTitle" : "localBuild.loadTitle");
+    $("local-build-description").textContent = t(
+      saving ? "localBuild.saveDescription" : "localBuild.loadDescription",
+    );
+    updateLocalBuildManageMode();
+  }
+  if (isOpen("mech-filter-overlay")) renderMechFilterControls();
+  if (isOpen("mech-sort-overlay")) renderMechSortControls();
+  if (isOpen("skill-overlay")) renderSkillControls();
+  if (isOpen("ui-settings-overlay")) renderUiSettingsDialog();
+  if (state.weaponDetail.open && isOpen("weapon-detail-overlay")) renderWeaponDetail();
+  if (state.simulation.open && isOpen("simulation-overlay")) {
+    const now = performance.now();
+    renderSimulationWeaponList();
+    renderSimulationMetrics(now);
+    renderSimulationGroupStatus();
+    renderSimulationScenario(now);
+  }
+  if (activeEquipmentTooltipTarget) showEquipmentTooltip(activeEquipmentTooltipTarget);
+}
+
+function changeLanguage(language, historyMode = "replace") {
+  const nextLanguage = normalizeLanguage(language);
+  if (!SUPPORTED_LANGUAGES.has(nextLanguage) || nextLanguage === activeLanguage) return false;
+
+  const previousLanguage = activeLanguage;
+  state.collapsedCompareCategories = new Set(
+    Array.from(state.collapsedCompareCategories, (category) => (
+      translatedValueForLanguage(category, previousLanguage, nextLanguage)
+    )),
+  );
+  activeLanguage = nextLanguage;
+  state.language = nextLanguage;
+  refreshLocalizedLabelConstants();
+  state.equipmentInfoHtmlCache.clear();
+  if (historyMode !== "none") {
+    const historyState = { ...(window.history.state || {}), mwolab: true };
+    if (historyMode === "push") window.history.pushState(historyState, "", languageUrl(nextLanguage));
+    else window.history.replaceState(historyState, "", languageUrl(nextLanguage));
+  }
+
+  applyStaticTranslations();
+  if (state.index && state.equipment) renderAll();
+  refreshOpenDialogTranslations();
+  window.dispatchEvent(new CustomEvent("mwolab:language-change", {
+    detail: { language: nextLanguage },
+  }));
+  return true;
 }
 
 const COMPONENT_ORDER = [
@@ -1906,6 +1996,79 @@ const SIMULATION_SCENARIOS = Object.freeze({
   brawl153: Object.freeze({ durationMs: SIMULATION_TIMED_DURATION_MS, visibleMs: 2_000, hiddenMs: 3_000 }),
 });
 const DEFAULT_COLLAPSED_COMPARE_CATEGORIES = [t("info.combinedDurability"), t("info.armorInfo"), t("info.structureInfo"), t("stats.chassisInfo")];
+
+function refreshLocalizedLabelConstants() {
+  Object.assign(COMPONENT_NAMES, {
+    head: t("component.head"),
+    left_arm: t("component.leftArm"),
+    left_torso: t("component.leftTorso"),
+    centre_torso: t("component.centerTorso"),
+    right_torso: t("component.rightTorso"),
+    right_arm: t("component.rightArm"),
+    left_leg: t("component.leftLeg"),
+    right_leg: t("component.rightLeg"),
+  });
+  const componentLabelKeys = {
+    head: "component.head",
+    centre_torso: "component.centerTorso",
+    left_torso: "component.leftTorso",
+    right_torso: "component.rightTorso",
+    left_arm: "component.leftArm",
+    right_arm: "component.rightArm",
+    left_leg: "component.leftLeg",
+    right_leg: "component.rightLeg",
+  };
+  INFO_COMPONENTS.forEach((entry) => { entry.label = t(componentLabelKeys[entry.key]); });
+  Object.assign(WEIGHT_CLASS_LABELS, {
+    light: t("weight.light"),
+    medium: t("weight.medium"),
+    heavy: t("weight.heavy"),
+    assault: t("weight.assault"),
+  });
+  Object.assign(FACTION_LABELS, {
+    Clan: t("faction.Clan"),
+    InnerSphere: t("faction.InnerSphere"),
+  });
+
+  const updateEntries = (entries, labelKeys, metaLabelKeys = []) => {
+    entries.forEach((entry, index) => {
+      entry.label = t(labelKeys[index]);
+      if (metaLabelKeys[index]) entry.metaLabel = t(metaLabelKeys[index]);
+    });
+  };
+  updateEntries(
+    STATS_DURABILITY_CATEGORIES,
+    ["stats.total", "common.armor", "stats.structure"],
+    ["info.durability", "info.armorInfo", "info.structureInfo"],
+  );
+  updateEntries(STATS_DURABILITY_SCOPES, [
+    "stats.all", "stats.torsoShoulders", "stats.torso", "stats.shoulders",
+    "component.head", "component.centerTorso", "component.leftTorso", "component.rightTorso",
+    "component.leftArm", "component.rightArm", "component.leftLeg", "component.rightLeg",
+  ]);
+  updateEntries(
+    STATS_MOBILITY_CATEGORIES,
+    ["info.acceleration", "info.deceleration", "info.turnSpeed", "info.torsoSpeed"],
+    ["info.acceleration", "info.deceleration", "info.turnSpeed", "info.torsoSpeed"],
+  );
+  updateEntries(
+    STATS_QUIRK_CATEGORIES,
+    ["info.cooldown", "common.heat", "info.durability", "info.range", "info.velocity"],
+    ["info.cooldown", "common.heat", "info.durability", "info.range", "info.velocity"],
+  );
+  updateEntries(STATS_QUIRK_DURABILITY_SCOPES, ["stats.all", "quirk.armor", "quirk.structure", "quirk.critPrevent"]);
+  updateEntries(STATS_COOLDOWN_SCOPES, [
+    "stats.all", "quirk.energyCooldown", "quirk.missileCooldown", "quirk.ballisticCooldown",
+    "quirk.energyDuration", "quirk.racRof", "quirk.mgRof", "stats.jamChance", "stats.jamDuration",
+  ]);
+  updateEntries(STATS_HEAT_SCOPES, ["stats.all", "quirk.energyHeat", "quirk.missileHeat", "quirk.ballisticHeat", "quirk.heatDissipation"]);
+  updateEntries(STATS_RANGE_SCOPES, ["stats.all", "quirk.energyRange", "quirk.missileRange", "quirk.ballisticRange", "quirk.additionalSensor"]);
+  updateEntries(STATS_VELOCITY_SCOPES, ["stats.all", "quirk.energyVelocity", "quirk.missileVelocity", "quirk.ballisticVelocity"]);
+  updateEntries(STATS_CHASSIS_AGGREGATE_MODES, ["common.average", "common.max", "common.min"]);
+  DEFAULT_COLLAPSED_COMPARE_CATEGORIES.splice(0, DEFAULT_COLLAPSED_COMPARE_CATEGORIES.length,
+    t("info.combinedDurability"), t("info.armorInfo"), t("info.structureInfo"), t("stats.chassisInfo"));
+}
+
 const DIRECT_COOLDOWN_QUIRKS = new Set([
   "all_cooldown_multiplier",
   "energy_cooldown_multiplier",
@@ -2359,6 +2522,12 @@ function loadoutInstalledEngine(build = state.currentBuild) {
   return null;
 }
 
+function loadoutComponentEngine(component, build = state.currentBuild) {
+  return (build?.components?.[component]?.items || [])
+    .map((entry) => itemById(entry.item_id))
+    .find((item) => item?.item_type === "engine") || null;
+}
+
 function engineSeriesKey(engine) {
   return String(engine?.name || "").replace(/_\d+$/i, "").toLowerCase();
 }
@@ -2434,6 +2603,46 @@ function mechById(id) {
 
 function itemSlots(item) {
   return number(item?.stats?.slots);
+}
+
+const standardEngineSlotCountCache = new WeakMap();
+
+function standardEngineSlotCount(mech = state.selectedMech) {
+  if (!mech) return 0;
+  const equipment = state.equipment;
+  if (!equipment || typeof equipment !== "object") return 0;
+  let factionCounts = standardEngineSlotCountCache.get(equipment);
+  if (!factionCounts) {
+    factionCounts = new Map();
+    standardEngineSlotCountCache.set(equipment, factionCounts);
+  }
+  const faction = normalizeFactionKey(mech.faction);
+  if (factionCounts.has(faction)) return factionCounts.get(faction);
+  const slotCounts = new Set(Object.values(state.equipment?.items || {})
+    .filter((item) => (
+      item?.item_type === "engine"
+      && engineWarehouseSection(item) === "engine-std"
+      && itemMatchesMechFaction(item, mech)
+    ))
+    .map((item) => itemSlots(item))
+    .filter((slots) => slots > 0));
+  const slots = slotCounts.size === 1 ? [...slotCounts][0] : 0;
+  factionCounts.set(faction, slots);
+  return slots;
+}
+
+function emptyEngineReservedSlots(
+  component,
+  mech = state.selectedMech,
+  build = state.currentBuild,
+) {
+  if (
+    component !== "centre_torso"
+    || !mech
+    || hasFixedOmnipods(mech)
+    || loadoutComponentEngine("centre_torso", build)
+  ) return 0;
+  return standardEngineSlotCount(mech);
 }
 
 function isGuidanceWeapon(item) {
@@ -2584,7 +2793,14 @@ function fixedArmorUpgradeSlots(mech = state.selectedMech, build = state.current
     : {};
 }
 
-function componentBaseSlotUsage(name, definition, build, engine, fixedEngine) {
+function componentBaseSlotUsage(
+  name,
+  definition,
+  build,
+  engine,
+  fixedEngine,
+  reservedEngineSlots = 0,
+) {
   const compDef = definition.components?.[name] || {};
   const buildComp = build.components?.[name] || { items: [] };
   const internalSlots = (compDef.internals || []).reduce((sum, itemId) => {
@@ -2603,16 +2819,29 @@ function componentBaseSlotUsage(name, definition, build, engine, fixedEngine) {
     const item = itemById(entry.item_id);
     return item ? sum + Math.max(1, effectiveItemSlots(item, build)) : sum;
   }, 0);
-  return internalSlots + fixedEquipmentSlots + sideEngineSlots + fixedEngineSlots + equipmentSlots;
+  return internalSlots
+    + fixedEquipmentSlots
+    + sideEngineSlots
+    + fixedEngineSlots
+    + equipmentSlots
+    + (name === "centre_torso" ? reservedEngineSlots : 0);
 }
 
-function allocateUpgradeSlots(requiredSlots, definition, build, engine, fixedEngine, reservedByComponent = {}) {
+function allocateUpgradeSlots(
+  requiredSlots,
+  definition,
+  build,
+  engine,
+  fixedEngine,
+  reservedEngineSlots = 0,
+  reservedByComponent = {},
+) {
   const byComponent = {};
   let remaining = requiredSlots;
   for (const name of STRUCTURE_SLOT_ORDER) {
     const slotLimit = number(definition.components?.[name]?.slots);
     const available = Math.max(0, slotLimit
-      - componentBaseSlotUsage(name, definition, build, engine, fixedEngine)
+      - componentBaseSlotUsage(name, definition, build, engine, fixedEngine, reservedEngineSlots)
       - number(reservedByComponent[name]));
     const allocated = Math.min(available, remaining);
     byComponent[name] = allocated;
@@ -2621,13 +2850,27 @@ function allocateUpgradeSlots(requiredSlots, definition, build, engine, fixedEng
   return { byComponent, unallocated: remaining };
 }
 
-function allocateFixedUpgradeSlots(slotsByComponent, definition, build, engine, fixedEngine) {
+function allocateFixedUpgradeSlots(
+  slotsByComponent,
+  definition,
+  build,
+  engine,
+  fixedEngine,
+  reservedEngineSlots = 0,
+) {
   const byComponent = { ...slotsByComponent };
   const unallocated = Object.entries(byComponent).reduce((sum, [name, requiredSlots]) => {
     const slotLimit = number(definition.components?.[name]?.slots);
     const available = Math.max(
       0,
-      slotLimit - componentBaseSlotUsage(name, definition, build, engine, fixedEngine),
+      slotLimit - componentBaseSlotUsage(
+        name,
+        definition,
+        build,
+        engine,
+        fixedEngine,
+        reservedEngineSlots,
+      ),
     );
     return sum + Math.max(0, number(requiredSlots) - available);
   }, 0);
@@ -6212,6 +6455,7 @@ function statsChassisEntries(entries) {
 
 function statsEntriesCacheKey(category) {
   return JSON.stringify([
+    activeLanguage,
     state.activeStatsView,
     category.key,
     category.summaryKey || "",
@@ -6506,6 +6750,11 @@ function calculateBuild() {
   let armor = 0;
   const quirks = mechlabEffectiveQuirks(mech, state.currentBuild);
   const engine = installedEngine();
+  const reservedEngineSlotCount = emptyEngineReservedSlots(
+    "centre_torso",
+    mech,
+    state.currentBuild,
+  );
   const structureUpgrade = itemById(state.currentBuild.upgrades?.structure?.ItemID);
   const selectedGuidanceUpgrade = guidanceUpgrade();
   const guidanceTons = number(selectedGuidanceUpgrade?.stats?.extraTons);
@@ -6519,6 +6768,7 @@ function calculateBuild() {
     state.currentBuild,
     engine,
     fixedEngine,
+    reservedEngineSlotCount,
     fixedArmorSlotsByComponent,
   );
   const armorAllocation = hasFixedArmorUpgradeSlots
@@ -6528,6 +6778,7 @@ function calculateBuild() {
       state.currentBuild,
       engine,
       fixedEngine,
+      reservedEngineSlotCount,
     )
     : allocateUpgradeSlots(
       requiredArmorSlots,
@@ -6535,6 +6786,7 @@ function calculateBuild() {
       state.currentBuild,
       engine,
       fixedEngine,
+      reservedEngineSlotCount,
       structureAllocation.byComponent,
     );
   let installedHeatSinkCount = 0;
@@ -6572,12 +6824,18 @@ function calculateBuild() {
     );
     const sideEngineSlots = ENGINE_SIDE_COMPONENTS.has(name) ? engineSideSlots(engine) : 0;
     const fixedEngineSlots = name === "centre_torso" && fixedEngine ? Math.max(1, itemSlots(fixedEngine)) : 0;
+    const reservedEngineSlots = name === "centre_torso" ? reservedEngineSlotCount : 0;
     const preferredStructureSlots = number(structureAllocation.byComponent[name]);
     const preferredArmorSlots = number(armorAllocation.byComponent[name]);
     const usage = {
-      slots: internalSlots + fixedEquipmentSlots + sideEngineSlots + fixedEngineSlots,
+      slots: internalSlots
+        + fixedEquipmentSlots
+        + sideEngineSlots
+        + fixedEngineSlots
+        + reservedEngineSlots,
       engineSideSlots: sideEngineSlots,
       fixedEngineSlots,
+      reservedEngineSlots,
       preferredStructureSlots,
       preferredArmorSlots,
       structureSlots: 0,
@@ -11761,7 +12019,7 @@ function renderEquipmentInfo() {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([table, sort]) => `${table}:${sort.key}:${sort.direction}`)
     .join("|");
-  const cacheKey = `${state.activeEquipmentInfoView}|${sortKey}`;
+  const cacheKey = `${activeLanguage}|${state.activeEquipmentInfoView}|${sortKey}`;
   if (state.equipmentInfoHtmlCache.has(cacheKey)) {
     content.innerHTML = state.equipmentInfoHtmlCache.get(cacheKey);
     return;
@@ -12478,7 +12736,12 @@ function renderComponent(name, calc, quirkValues, ghostHeatGroups = new Set()) {
   const installedEngineRow = installedEngineIndex >= 0
     ? renderLoadoutItem(name, buildComp.items[installedEngineIndex], installedEngineIndex, calc, ghostHeatGroups)
     : "";
-  const emptySlots = Math.max(0, slotLimit - usage.slots - number(usage.movableUpgradeSlots));
+  const reservedEngineSlots = number(usage.reservedEngineSlots);
+  const emptyEngineRow = renderEmptyEngineSlot(reservedEngineSlots);
+  const emptySlots = Math.max(
+    0,
+    slotLimit - usage.slots - number(usage.movableUpgradeSlots),
+  );
   const emptyRows = Array.from({ length: emptySlots }, () => `<div class="critical-slot empty-slot" data-empty-slot-component="${name}">-</div>`).join("");
   return `
     <article class="component component-location-${name} ${usage.warnings.length ? "invalid" : ""}" data-component-drop="${name}">
@@ -12497,7 +12760,7 @@ function renderComponent(name, calc, quirkValues, ghostHeatGroups = new Set()) {
             ${usage.warnings.length ? `<div class="warnings">${usage.warnings.join(" / ")}</div>` : ""}
           </div>
         </div>
-        <div class="component-items">${internalRows}${fixedEquipmentRows}${itemRows}${structureRows}${armorRows}${emptyRows}${sideEngineRows}${fixedEngineRows}${installedEngineRow}</div>
+        <div class="component-items">${internalRows}${fixedEquipmentRows}${itemRows}${structureRows}${armorRows}${emptyRows}${sideEngineRows}${fixedEngineRows}${emptyEngineRow}${installedEngineRow}</div>
     </article>
   `;
 }
@@ -12626,6 +12889,16 @@ function renderEngineSideSlots(engine, slots) {
   const name = engine?.display_name || t("common.engine");
   const tooltipItem = engine ? ` data-tooltip-item="${engine.id}"` : "";
   return `<div class="critical-slot fixed-slot engine-side-slot"${tooltipItem} style="--slot-span:${slots}" aria-label="${escapeHtml(name)} / ${slots} slots">${t("common.engine")}</div>`;
+}
+
+function renderEmptyEngineSlot(slots) {
+  if (!(slots > 0)) return "";
+  const label = t("build.emptyEngineSlot");
+  return `
+    <div class="slot-item engine engine-main-slot empty-engine-main-slot" data-empty-engine-slot style="--slot-span:${slots}" aria-label="${escapeHtml(label)} / ${slots} slots">
+      <div class="engine-slot-content"><strong>${escapeHtml(label)}</strong></div>
+    </div>
+  `;
 }
 
 function renderFixedEngine(engine, slots, calc = null) {
@@ -13726,7 +13999,7 @@ function openPublicFittingSources() {
 }
 
 globalThis.MwoLabCommunityBridge = Object.freeze({
-  language: activeLanguage,
+  get language() { return activeLanguage; },
   ready: communityBridgeReady,
   getCurrentFitting() {
     const loadoutCode = MWOCodec.encode(currentBuildAsMwoLoadout());
@@ -15245,7 +15518,9 @@ function reflowInstalledEquipment() {
         return {
           component,
           order,
-          freeAfterInstall: number(definition.slots) - number(usage.slots) - effectiveItemSlots(candidate.item),
+          freeAfterInstall: number(definition.slots)
+            - number(usage.slots)
+            - effectiveItemSlots(candidate.item),
         };
       })
       .sort((a, b) => a.freeAfterInstall - b.freeAfterInstall || a.order - b.order)[0]?.component;
@@ -15301,7 +15576,9 @@ function autoInstallWarehouseItem(item) {
     .map((component, order) => {
       const definition = effectiveComponentDefinition(state.selectedMech, state.currentBuild, component);
       const usage = calc.componentUsage[component] || { slots: 0 };
-      const freeAfterInstall = number(definition.slots) - number(usage.slots) - effectiveItemSlots(item);
+      const freeAfterInstall = number(definition.slots)
+        - number(usage.slots)
+        - effectiveItemSlots(item);
       return { component, order, freeAfterInstall };
     })
     .sort((a, b) => a.freeAfterInstall - b.freeAfterInstall || a.order - b.order);
@@ -15375,6 +15652,11 @@ function engineHeatSinkDropValidation(item, source = null) {
   return null;
 }
 
+function emptyEngineSlotDropValidation(item, source = null) {
+  if (item?.item_type !== "engine") return t("build.engineSlotOnly");
+  return dropValidation(item, "centre_torso", source);
+}
+
 function dropValidation(item, component, source = null) {
   if (!item || !state.currentBuild?.components?.[component]) return "Invalid drop target";
   if (item.item_type === "engine" && fixedOmniEngine()) return t("build.engineFixed");
@@ -15423,8 +15705,9 @@ function dropValidation(item, component, source = null) {
   const usage = calc.componentUsage[component] || { slots: 0 };
   const slotLimit = number(compDef.slots);
   const addedItemSlots = Math.max(1, effectiveItemSlots(item));
+  const reservedEngineSlots = number(usage.reservedEngineSlots);
   const replacedEngineSlots = item.item_type === "engine" && source?.source !== "component"
-    ? Math.max(0, itemSlots(loadoutInstalledEngine()))
+    ? Math.max(0, itemSlots(loadoutComponentEngine("centre_torso"))) + reservedEngineSlots
     : 0;
   const reflowableOccupiedUpgradeSlots = Math.max(
     0,
@@ -15613,19 +15896,25 @@ function updateEquipmentPointerDropFeedback(target) {
   const payload = state.activeDrag;
   if (!session || !payload) return;
 
-  const engineBay = target?.closest?.("[data-engine-heat-sink-drop]")
+  const emptyEngineSlot = target?.closest?.("[data-empty-engine-slot]");
+  const engineBay = emptyEngineSlot ? null : target?.closest?.("[data-engine-heat-sink-drop]")
     || (isHeatSink(itemById(payload.itemId))
       ? target?.closest?.("[data-engine-heat-sink-engine]")
       : null);
-  const component = engineBay ? null : target?.closest?.("[data-component-drop]");
-  const equipmentPanel = component || engineBay ? null : target?.closest?.("#equipment-panel");
-  const indicator = engineBay || component || (
+  const component = emptyEngineSlot || engineBay ? null : target?.closest?.("[data-component-drop]");
+  const equipmentPanel = component || engineBay || emptyEngineSlot ? null : target?.closest?.("#equipment-panel");
+  const indicator = emptyEngineSlot || engineBay || component || (
     equipmentPanel && ["component", "engineHeatSink"].includes(payload.source) ? equipmentPanel : null
   );
   if (indicator === session.dropIndicator) return;
 
   clearEquipmentPointerDropFeedback();
   session.dropIndicator = indicator;
+  if (emptyEngineSlot) {
+    const warning = emptyEngineSlotDropValidation(itemById(payload.itemId), payload);
+    emptyEngineSlot.classList.add(warning ? "drop-invalid" : "drop-valid");
+    return;
+  }
   if (engineBay) {
     const warning = engineHeatSinkDropValidation(itemById(payload.itemId), payload);
     engineBay.classList.add(warning ? "drop-invalid" : "drop-valid");
@@ -15719,6 +16008,16 @@ function suppressNextEquipmentPointerClick() {
 function dropEquipmentPointerDrag(target) {
   const payload = state.activeDrag;
   if (!payload) return;
+  const emptyEngineSlot = target?.closest?.("[data-empty-engine-slot]");
+  if (emptyEngineSlot) {
+    const item = itemById(payload.itemId);
+    const warning = emptyEngineSlotDropValidation(item, payload);
+    if (warning) setDropStatus(warning);
+    else installDraggedItem("centre_torso");
+    if (state.activeDrag) clearDragState();
+    return;
+  }
+
   const engineBay = target?.closest?.("[data-engine-heat-sink-drop]")
     || (isHeatSink(itemById(payload.itemId))
       ? target?.closest?.("[data-engine-heat-sink-engine]")
@@ -15977,7 +16276,26 @@ function removeDraggedItem() {
 }
 
 function bindEvents() {
-  window.addEventListener("popstate", () => { void applyMechNavigationFromLocation(); });
+  window.addEventListener("popstate", () => {
+    changeLanguage(detectLanguage(), "none");
+    void applyMechNavigationFromLocation();
+  });
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-lang-link]");
+    if (
+      !link
+      || event.defaultPrevented
+      || event.button !== 0
+      || event.ctrlKey
+      || event.metaKey
+      || event.shiftKey
+      || event.altKey
+    ) return;
+    const language = normalizeLanguage(link.dataset.langLink);
+    if (!SUPPORTED_LANGUAGES.has(language)) return;
+    event.preventDefault();
+    changeLanguage(language);
+  });
   const tooltipSelector = "[data-item], [data-tooltip-item], [data-loadout-item], [data-engine-heat-sink-item], [data-omnipod], [data-tooltip-omnipod], [data-ghost-heat-warning]";
   if (!globalThis.__MWOLAB_MOBILE__) {
     document.addEventListener("pointerover", (event) => {
@@ -17338,6 +17656,8 @@ globalThis.MwoLabMobileBridge = Object.freeze({
 if (globalThis.__MWOLAB_TEST__) {
   globalThis.__MWOLAB_TEST_API__ = Object.freeze({
     state,
+    changeLanguage,
+    languageUrl,
     MAX_MECHLAB_FITTING_TABS,
     activeMechlabTab,
     hasFocusedEmptyMechlabTabSlot,
@@ -17368,6 +17688,8 @@ if (globalThis.__MWOLAB_TEST__) {
     jumpJetFinalStats,
     jumpJetHeight,
     itemSlots,
+    standardEngineSlotCount,
+    emptyEngineReservedSlots,
     itemTons,
     structureUpgradeSlots,
     armorUpgradeSlots,
@@ -17515,6 +17837,8 @@ if (globalThis.__MWOLAB_TEST__) {
     mechMatchesQuirkFilters,
     normalizeMechHardpointFilterMinimum,
     calculateBuild,
+    renderComponent,
+    emptyEngineSlotDropValidation,
     mobilePickerData,
     mobileSlotSummary,
     mobileRemoveItem,

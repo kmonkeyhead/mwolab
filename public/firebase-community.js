@@ -14,7 +14,7 @@ const RECOMMENDATION_CACHE_STORAGE_KEY = "mwolab:recommended-fittings:v1";
 const RECOMMENDATION_CACHE_VERSION = 1;
 const GOOGLE_IDENTITY_CLIENT_ID = "743748401179-u7uf1svvj8cbs64987om4969jq6eu0jo.apps.googleusercontent.com";
 const bridge = globalThis.MwoLabCommunityBridge;
-const language = bridge?.language === "en" ? "en" : "kr";
+let language = bridge?.language === "en" ? "en" : "kr";
 const COPY = {
   kr: {
     login: "Google 로그인", logout: "로그아웃", account: "계정 메뉴", profile: "프로필", author: "작성자", browserTitle: "핏팅 브라우저", saveTitle: "빌드 저장하기", browserEyebrow: "FITTING BROWSER", saveEyebrow: "SAVE BUILD",
@@ -88,7 +88,7 @@ const COPY = {
     stat: { armor: "Armor", tons: "Tonnage", engine: "Engine", maxSpeed: "Max speed", dps: "DPS", alphaDamage: "Alpha damage", heatEfficiency: "Heat efficiency", heatSinks: "Heat sinks" },
   },
 };
-const copy = COPY[language];
+let copy = COPY[language];
 const elements = {
   login: document.getElementById("community-login"), authStatus: document.getElementById("community-auth-status"),
   accountMenu: document.getElementById("community-account-menu"),
@@ -1292,11 +1292,12 @@ function renderSaveForm() {
     elements.content.innerHTML = `<div class="community-empty">${copy.noFitting}</div>`;
     return;
   }
+  const savePublicByDefault = Boolean(currentUser);
   elements.content.innerHTML = `
     <form class="community-save-form" data-community-save-form data-mech-id="${escapeHtml(fitting.mechId)}">
       <fieldset><legend>${copy.saveLocation}</legend><div class="community-save-locations">
-        <label class="community-save-location${currentUser ? "" : " disabled"}"><input type="radio" name="save-location" value="public" ${currentUser ? "" : "disabled"}><i aria-hidden="true"></i><span><strong>${copy.publicLocation}</strong><small>${copy.publicHelp}</small></span></label>
-        <label class="community-save-location selected"><input type="radio" name="save-location" value="local" checked><i aria-hidden="true"></i><span><strong>${copy.pcLocation}</strong><small>${copy.pcHelp}</small></span></label>
+        <label class="community-save-location${savePublicByDefault ? " selected" : " disabled"}"><input type="radio" name="save-location" value="public" ${savePublicByDefault ? "checked" : "disabled"}><i aria-hidden="true"></i><span><strong>${copy.publicLocation}</strong><small>${copy.publicHelp}</small></span></label>
+        <label class="community-save-location${savePublicByDefault ? "" : " selected"}"><input type="radio" name="save-location" value="local" ${savePublicByDefault ? "" : "checked"}><i aria-hidden="true"></i><span><strong>${copy.pcLocation}</strong><small>${copy.pcHelp}</small></span></label>
       </div>${currentUser ? "" : `<p class="community-save-login-note">${copy.loginRequired}</p>`}</fieldset>
       <label class="community-save-field"><span>${copy.titleLabel}</span><input type="text" name="title" maxlength="${TITLE_LIMIT}" placeholder="${escapeHtml(copy.titlePlaceholder)}" required><small data-title-count>0 / ${TITLE_LIMIT}</small></label>
       <div class="community-save-actions"><button type="button" data-community-cancel>${copy.cancel}</button><button type="submit" data-community-save disabled>${copy.save}</button></div>
@@ -1736,6 +1737,55 @@ document.addEventListener("keydown", (event) => {
   closeCommunity();
 });
 
+function refreshCommunityLanguage(nextLanguage) {
+  const normalizedLanguage = nextLanguage === "en" ? "en" : "kr";
+  if (normalizedLanguage === language) return;
+  language = normalizedLanguage;
+  copy = COPY[language];
+  updateAccountUi();
+  elements.close.setAttribute("aria-label", language === "en" ? "Close" : "닫기");
+  elements.recommendationClose.setAttribute("aria-label", language === "en" ? "Close" : "닫기");
+  elements.shareTitle.textContent = copy.shareDialogTitle;
+  elements.shareLabel.textContent = copy.shareUrlLabel;
+  elements.shareCopy.textContent = copy.shareCopy;
+  elements.closeShare.textContent = copy.shareClose;
+
+  if (!elements.nicknameOverlay.hidden) {
+    const changingNickname = nicknamePromptMode === "account" && Boolean(currentProfile?.nickname);
+    elements.nicknameTitle.textContent = changingNickname ? copy.nicknameChangeTitle : copy.nicknameTitle;
+    elements.nicknameDescription.textContent = copy.nicknameDescription;
+    elements.nicknameLaterNotice.textContent = copy.nicknameLaterNotice;
+    elements.nicknameRules.textContent = copy.nicknameRules;
+    elements.nicknameLater.textContent = copy.nicknameLater;
+    elements.nicknameSubmit.textContent = changingNickname ? copy.nicknameChangeSubmit : copy.nicknameSubmit;
+  }
+  if (!elements.recommendationOverlay.hidden && recommendationDialogRecord) {
+    elements.recommendationTitle.textContent = `${copy.recommendationTitle} · ${recommendationDialogRecord.name}`;
+    elements.recommendationContent.innerHTML = fittingDetailSectionsHtml(recommendationDialogRecord.analysis);
+    elements.recommendationApply.textContent = copy.recommendationApply;
+  }
+  if (elements.overlay.hidden) return;
+
+  elements.title.textContent = activeMode === "save" ? copy.saveTitle : copy.browserTitle;
+  elements.eyebrow.textContent = activeMode === "save" ? copy.saveEyebrow : copy.browserEyebrow;
+  if (activeMode === "browse") {
+    renderMechFilterControl();
+    renderBrowser();
+    return;
+  }
+
+  const previousForm = elements.content.querySelector("[data-community-save-form]");
+  const title = previousForm?.elements.title.value || "";
+  const locationValue = previousForm?.elements["save-location"].value || "";
+  renderSaveForm();
+  const nextForm = elements.content.querySelector("[data-community-save-form]");
+  if (!nextForm) return;
+  nextForm.elements.title.value = title;
+  const locationInput = nextForm.querySelector(`[name="save-location"][value="${locationValue}"]:not(:disabled)`);
+  if (locationInput) locationInput.checked = true;
+  updateSaveForm(nextForm);
+}
+
 async function initializeFirebase() {
   updateLoginButton();
   if (!bridge || location.protocol === "file:") return false;
@@ -1794,6 +1844,7 @@ elements.close.setAttribute("aria-label", language === "en" ? "Close" : "닫기"
 elements.recommendationClose.setAttribute("aria-label", language === "en" ? "Close" : "닫기");
 firebaseReady = initializeFirebase();
 window.addEventListener("mwolab:recommendation-context", (event) => loadRecommendations(event.detail));
+window.addEventListener("mwolab:language-change", (event) => refreshCommunityLanguage(event.detail?.language));
 window.addEventListener("mwolab:shared-fitting-navigation-cleared", () => {
   sharedLoadGeneration += 1;
   bridge.setSharedFittingRequestPending?.(false);

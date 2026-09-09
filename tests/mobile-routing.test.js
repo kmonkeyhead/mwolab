@@ -262,6 +262,10 @@ test("모바일 번들은 별도 진입점과 제한된 멕랩 UI 계약을 포�
   assert.match(mobileIndex, /firebase-community\\\.js/);
   assert.match(mobileIndex, /mobile\/mobile-shared-fitting\.js/);
   assert.match(mobileApp, /data-mobile-action/);
+  assert.match(mobileApp, /"data-lang-link": value/);
+  assert.match(mobileApp, /addEventListener\("mwolab:language-change"/);
+  assert.match(mobileApp, /if \(!mechListOverlay\.hidden\) renderMechList\(\)/);
+  assert.match(mobileApp, /if \(!pickerOverlay\.hidden\) renderPicker\(\)/);
   assert.match(mobileApp, /mobile-mech-list-controls/);
   assert.match(mobileApp, /mobile-shared-fitting-status/);
   assert.match(mobileApp, /mwolab:mobile-shared-fitting-status/);
@@ -299,6 +303,7 @@ test("모바일 번들은 별도 진입점과 제한된 멕랩 UI 계약을 포�
   assert.match(mobileApp, /categories\.includes\(preferredCategory\) \? preferredCategory : "weapons"/);
   assert.match(mobileApp, /if \(REMEMBERED_PICKER_CATEGORIES\.includes\(activePickerCategory\)\) \{[\s\S]*?lastPickerCategory = activePickerCategory;/);
   assert.match(mobileApp, /if \(component\) openPicker\(component\);/);
+  assert.match(mobileApp, /closest\("\[data-empty-engine-slot\]"\)[\s\S]*?openPicker\("centre_torso", "engines"\)/);
   assert.match(mobileApp, /\.structure-upgrade-slot\.empty-slot, \.armor-upgrade-slot\.empty-slot/);
   assert.match(mobileApp, /emptySlot\.closest\("\[data-component-drop\]"\)\?\.dataset\.componentDrop/);
   assert.match(mobileApp, /DOUBLE_TAP_WINDOW_MS = 450/);
@@ -365,6 +370,8 @@ test("모바일 번들은 별도 진입점과 제한된 멕랩 UI 계약을 포�
   assert.match(styles, /calc\(var\(--mechlab-slot-row-height\) \* var\(--slot-span, 1\)/);
   assert.match(styles, /repeating-linear-gradient\([^\n]+var\(--mechlab-slot-fill-height\)/);
   assert.match(app, /data-empty-slot-component/);
+  assert.match(app, /data-empty-engine-slot[^>]*--slot-span:\$\{slots\}/);
+  assert.match(app, /function emptyEngineSlotDropValidation\(item, source = null\)[\s\S]*?item\?\.item_type !== "engine"/);
   assert.match(app, /chassisName: gameLocalizedText\(mech\.chassis\) \|\| formatChassisName\(mech\.chassis\)/);
   assert.match(app, /weightClassKey: String\(mech\.weight_class \|\| ""\)/);
   assert.match(app, /factionOrder: factionRank\(mech\.faction\)/);
@@ -397,6 +404,7 @@ test("모바일 번들은 별도 진입점과 제한된 멕랩 UI 계약을 포�
   assert.match(mobileSharedFitting, /\[1, 2, 3\]\.includes\(schemaVersion\)/);
   assert.match(mobileSharedFitting, /currentFittingId !== fittingId/);
   assert.match(mobileSharedFitting, /generation !== loadGeneration/);
+  assert.match(mobileSharedFitting, /addEventListener\("mwolab:language-change"/);
   assert.match(mobileSharedFitting, /addEventListener\("popstate", loadSharedFittingForMobile\)/);
   assert.match(mobileSharedFitting, /bridge\.openSharedFittingCode\(loadoutCode\)/);
   assert.doesNotMatch(mobileSharedFitting, /firebase-auth|getDocs|communitySource|ownerUid|likeCount/);

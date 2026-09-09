@@ -8999,6 +8999,30 @@ body.pointer-drag-active * {
   box-shadow: inset 3px 0 #84c9f7;
 }
 
+.slot-item.empty-engine-main-slot {
+  border-style: dashed;
+  border-color: rgba(105, 186, 240, 0.48);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(40, 92, 124, 0.34) 0,
+    rgba(40, 92, 124, 0.34) var(--mechlab-slot-fill-height),
+    rgba(52, 120, 159, 0.28) var(--mechlab-slot-fill-height),
+    rgba(52, 120, 159, 0.28) calc(var(--mechlab-slot-fill-height) + 1px)
+  );
+  box-shadow: inset 3px 0 rgba(132, 201, 247, 0.42);
+  cursor: default;
+}
+
+.empty-engine-main-slot .engine-slot-content {
+  align-content: center;
+  text-align: center;
+}
+
+.empty-engine-main-slot .engine-slot-content > strong {
+  color: #8fb9cd;
+  letter-spacing: 0.055em;
+}
+
 .engine-slot-content {
   display: grid;
   align-content: start;

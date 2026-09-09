@@ -47,6 +47,12 @@ function loadMechLab({
     Date,
     Intl,
     Promise,
+    CustomEvent: class CustomEvent {
+      constructor(type, options = {}) {
+        this.type = type;
+        this.detail = options.detail;
+      }
+    },
     Uint8Array,
     TextEncoder,
     TextDecoder,
@@ -90,6 +96,7 @@ function loadMechLab({
       replaceState(state, title, value) { historyReplacements.push(value); },
     },
     addEventListener: () => {},
+    dispatchEvent: () => {},
     innerWidth: 1280,
     innerHeight: 720,
     setTimeout,
@@ -104,6 +111,59 @@ function loadMechLab({
 }
 
 const api = loadMechLab();
+
+test("언어 전환은 현재 URL과 편집 중인 피팅 상태를 유지한다", () => {
+  const historyReplacements = [];
+  const donateLink = {
+    setAttribute() {},
+    removeAttribute() {},
+  };
+  const loadoutCodeOverlay = { hidden: false };
+  const loadoutCodeTitle = { textContent: "" };
+  const loadoutCodeDescription = { textContent: "" };
+  const loadoutCodeText = { value: "EDITED-CODE", placeholder: "" };
+  const loadoutUrlText = { value: "" };
+  const languageApi = loadMechLab({
+    windowHref: "http://localhost/?lang=en&tab=info&mech=713#current",
+    historyReplacements,
+    elements: {
+      "donate-link": donateLink,
+      "loadout-code-overlay": loadoutCodeOverlay,
+      "loadout-code-title": loadoutCodeTitle,
+      "loadout-code-description": loadoutCodeDescription,
+      "loadout-code-text": loadoutCodeText,
+      "loadout-url-text": loadoutUrlText,
+    },
+  });
+  const build = { components: { left_arm: { items: [{ item_id: 42 }] } } };
+  const fittingTab = { id: "fitting-7", mechId: 713, build };
+  languageApi.state.activeMainTab = "mechlab";
+  languageApi.state.mechlabTabs = [fittingTab];
+  languageApi.state.activeMechlabTabId = fittingTab.id;
+  languageApi.state.currentBuild = build;
+  languageApi.state.selectedMechIdsByTab.mechlab = 713;
+  languageApi.state.mechlabPendingTabIndex = 1;
+  languageApi.state.loadoutCodeMode = "import";
+
+  assert.equal(languageApi.changeLanguage("kr"), true);
+  assert.deepEqual(historyReplacements, ["/?lang=kr&tab=info&mech=713#current"]);
+  assert.equal(languageApi.state.language, "kr");
+  assert.equal(languageApi.state.activeMainTab, "mechlab");
+  assert.equal(languageApi.state.mechlabTabs[0], fittingTab);
+  assert.equal(languageApi.state.activeMechlabTabId, "fitting-7");
+  assert.equal(languageApi.state.currentBuild, build);
+  assert.equal(languageApi.state.selectedMechIdsByTab.mechlab, 713);
+  assert.equal(languageApi.state.mechlabPendingTabIndex, 1);
+  assert.equal(loadoutCodeTitle.textContent, "MWO 코드 불러오기");
+  assert.match(loadoutCodeDescription.textContent, /붙여 넣/);
+  assert.equal(loadoutCodeText.value, "EDITED-CODE");
+  assert.equal(loadoutCodeText.placeholder, "MWO 로드아웃 코드를 붙여 넣으세요");
+
+  languageApi.state.loadoutCodeMode = "export";
+  loadoutUrlText.value = "http://localhost/?lang=kr&loadout=zExample";
+  assert.equal(languageApi.changeLanguage("en"), true);
+  assert.equal(loadoutUrlText.value, "http://localhost/?lang=en&loadout=zExample");
+});
 
 test("사용자 지정 장비 숨김 목록과 표시명 원본 보존을 적용한다", () => {
   const nobleAc20 = {
@@ -3601,6 +3661,121 @@ test("빌드 집계 공식은 개별 공식과 같은 최종값을 만든다", (
   assert.equal(result.totalHeatSinkCount, 10);
   assert.equal(result.currentSlotUsage, 7);
   assert.equal(result.warnings.some((warning) => warning.includes("Tonnage")), false);
+});
+
+test("엔진이 없는 배틀멕은 STD 크기의 중앙 몸통 엔진 공간을 일반 장비로부터 예약한다", () => {
+  const engine = {
+    id: 401,
+    item_type: "engine",
+    name: "Engine_Std_200",
+    display_name: "STD ENGINE 200",
+    faction: "Clan,InnerSphere",
+    stats: { tons: 5, slots: 6, rating: 200, heatsinks: 10, sideSlots: 0 },
+  };
+  const module = {
+    id: 402,
+    item_type: "module",
+    name: "TestModule",
+    display_name: "TEST MODULE",
+    faction: "InnerSphere",
+    stats: { tons: 0, slots: 1 },
+  };
+  const structureUpgrade = {
+    id: 403,
+    item_type: "upgrade",
+    name: "EndoSteelStructure",
+    display_name: "ENDO STEEL",
+    faction: "InnerSphere",
+    stats: { weightPerTon: 0.05 },
+  };
+  resetEquipment({ 401: engine, 402: module, 403: structureUpgrade });
+  const componentNames = [
+    "head",
+    "centre_torso",
+    "left_torso",
+    "right_torso",
+    "left_arm",
+    "right_arm",
+    "left_leg",
+    "right_leg",
+  ];
+  const components = Object.fromEntries(componentNames.map((name) => [name, {
+    hp: name === "head" ? 15 : 20,
+    slots: 12,
+    hardpoints: [],
+    internals: [],
+    fixed: [],
+  }]));
+  const mech = {
+    id: "empty-engine-fixture",
+    stock_loadout: "empty-engine-fixture",
+    faction: "InnerSphere",
+    definition: {
+      stats: { MaxTons: 50, MinEngineRating: 100, MaxEngineRating: 300, MaxJumpJets: 0 },
+      components,
+      quirks: [],
+    },
+  };
+  api.state.loadouts = {};
+  api.state.omnipods = {};
+  api.state.selectedMech = mech;
+  api.state.currentBuild = {
+    components: Object.fromEntries(componentNames.map((name) => [name, { armor: 0, items: [] }])),
+    engineHeatSinks: [],
+    rearArmor: {},
+    upgrades: { artemis: { Equipped: false } },
+  };
+
+  const emptyCalc = api.calculateBuild();
+  assert.equal(api.standardEngineSlotCount(mech), 6);
+  assert.equal(emptyCalc.componentUsage.centre_torso.reservedEngineSlots, 6);
+  assert.equal(emptyCalc.componentUsage.centre_torso.slots, 6);
+  assert.equal(emptyCalc.currentSlotUsage, 6);
+  const emptyTorsoHtml = api.renderComponent("centre_torso", emptyCalc, {});
+  assert.match(emptyTorsoHtml, /data-empty-engine-slot[^>]*--slot-span:6/);
+  assert.match(emptyTorsoHtml, />ENGINE BAY</);
+  assert.doesNotMatch(emptyTorsoHtml, /empty-engine-main-slot[\s\S]*?slot-item-mark/);
+  assert.equal((emptyTorsoHtml.match(/data-empty-slot-component="centre_torso"/g) || []).length, 6);
+  assert.ok(api.emptyEngineSlotDropValidation(module));
+  assert.equal(api.emptyEngineSlotDropValidation(engine), null);
+
+  api.state.currentBuild.components.left_torso.items = [{ item_id: engine.id }];
+  const misplacedEngineCalc = api.calculateBuild();
+  assert.equal(misplacedEngineCalc.componentUsage.centre_torso.reservedEngineSlots, 6);
+  assert.match(
+    misplacedEngineCalc.componentUsage.left_torso.warnings.join(" "),
+    /center torso/i,
+  );
+  api.state.currentBuild.components.left_torso.items = [];
+
+  api.state.currentBuild.components.right_torso.items = Array.from(
+    { length: 12 },
+    () => ({ item_id: module.id }),
+  );
+  api.state.currentBuild.upgrades.structure = { ItemID: structureUpgrade.id };
+  const upgradeCalc = api.calculateBuild();
+  assert.equal(upgradeCalc.componentUsage.centre_torso.structureSlots, 6);
+  assert.equal(upgradeCalc.componentUsage.left_torso.structureSlots, 8);
+  api.state.currentBuild.components.right_torso.items = [];
+  delete api.state.currentBuild.upgrades.structure;
+
+  for (let index = 0; index < 6; index += 1) {
+    assert.equal(api.installWarehouseItemInComponent(module, "centre_torso", { render: false }), true);
+  }
+  assert.equal(api.calculateBuild().currentSlotUsage, 12);
+  assert.equal(api.installWarehouseItemInComponent(module, "centre_torso", { render: false }), false);
+  assert.equal(api.installWarehouseItemInComponent(engine, "centre_torso", { render: false }), true);
+  const installedCalc = api.calculateBuild();
+  assert.equal(installedCalc.componentUsage.centre_torso.reservedEngineSlots, 0);
+  assert.equal(installedCalc.componentUsage.centre_torso.slots, 12);
+  assert.equal(installedCalc.componentUsage.centre_torso.warnings.length, 0);
+  assert.doesNotMatch(api.renderComponent("centre_torso", installedCalc, {}), /data-empty-engine-slot/);
+
+  api.state.currentBuild.components.centre_torso.items = [];
+  api.state.loadouts[mech.stock_loadout] = { components: { centre_torso: { omnipod: 77 } } };
+  const omniCalc = api.calculateBuild();
+  assert.equal(omniCalc.componentUsage.centre_torso.reservedEngineSlots, 0);
+  assert.doesNotMatch(api.renderComponent("centre_torso", omniCalc, {}), /data-empty-engine-slot/);
 });
 
 test("모바일 브리지는 부위별 하드포인트·슬롯 검증과 보호된 편집 경로를 재사용한다", () => {

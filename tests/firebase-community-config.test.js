@@ -9,6 +9,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 test("로그인과 통합 핏팅 브라우저를 운영 페이지에 표시한다", () => {
   const html = read("public/index.html");
   const app = read("public/app.js");
+  const client = read("public/firebase-community.js");
   assert.doesNotMatch(html, /<html[^>]+data-community-ui="hidden"/);
   assert.ok(html.indexOf('id="community-login"') < html.indexOf('id="donate-link"'));
   assert.match(html, /<button id="community-login"/);
@@ -17,6 +18,8 @@ test("로그인과 통합 핏팅 브라우저를 운영 페이지에 표시한�
   assert.match(app, /data-community-open="save"/);
   assert.match(html, /id="mech-toolbar-community"[^>]+data-community-open="browse"[^>]+data-community-mech-filter="all"/);
   assert.doesNotMatch(app, /id="local-save-build"|id="local-load-build"/);
+  assert.match(client, /let language = bridge\?\.language === "en" \? "en" : "kr"/);
+  assert.match(client, /addEventListener\("mwolab:language-change"/);
 });
 
 test("Firebase 공개 설정에는 서버 비밀키를 포함하지 않는다", () => {
@@ -791,12 +794,15 @@ test("공개 핏팅 상태는 새 탭에서는 유지하고 같은 탭 교체에
   assert.match(styles, /\.mechlab-fitting-tab\.public-fitting\.active/);
 });
 
-test("빌드 저장 대화상자는 소형 모드와 20자 제목 제한을 사용한다", () => {
+test("빌드 저장 대화상자는 로그인 상태에 맞는 기본 위치와 20자 제목 제한을 사용한다", () => {
   const client = read("public/firebase-community.js");
   const styles = read("public/styles.css");
   assert.match(client, /dialog\?\.classList\.toggle\("save-mode", activeMode === "save"\)/);
   assert.match(styles, /\.community-dialog\.save-mode \{[\s\S]*width: min\(34rem, 100%\);[\s\S]*max-height: min\(32rem, calc\(100vh - 3rem\)\)/);
   assert.match(client, /maxlength="\$\{TITLE_LIMIT\}"/);
+  assert.match(client, /const savePublicByDefault = Boolean\(currentUser\)/);
+  assert.match(client, /value="public" \$\{savePublicByDefault \? "checked" : "disabled"\}/);
+  assert.match(client, /value="local" \$\{savePublicByDefault \? "" : "checked"\}/);
 });
 
 test("내 업로드 삭제는 비공개 좋아요 정리 요청과 필요한 복합 인덱스를 함께 사용한다", () => {

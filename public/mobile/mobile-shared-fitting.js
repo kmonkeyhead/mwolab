@@ -17,8 +17,8 @@ const COPY = {
   },
 };
 
-const language = new URL(window.location.href).searchParams.get("lang") === "en" ? "en" : "kr";
-const copy = COPY[language];
+let language = new URL(window.location.href).searchParams.get("lang") === "en" ? "en" : "kr";
+let copy = COPY[language];
 
 function setStatus(message, tone = "") {
   const status = document.getElementById("data-status");
@@ -105,4 +105,14 @@ async function loadSharedFittingForMobile() {
 }
 
 loadSharedFittingForMobile();
+window.addEventListener("mwolab:language-change", (event) => {
+  const nextLanguage = event.detail?.language === "en" ? "en" : "kr";
+  if (nextLanguage === language) return;
+  const previousCopy = copy;
+  language = nextLanguage;
+  copy = COPY[language];
+  const status = document.getElementById("data-status");
+  const statusKey = Object.keys(previousCopy).find((key) => previousCopy[key] === status?.textContent);
+  if (statusKey) setStatus(copy[statusKey], statusKey === "loading" ? "" : "error");
+});
 window.addEventListener("popstate", loadSharedFittingForMobile);
