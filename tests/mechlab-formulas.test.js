@@ -62,6 +62,7 @@ function loadMechLab({
     btoa: (value) => Buffer.from(value, "binary").toString("base64"),
     atob: (value) => Buffer.from(value, "base64").toString("binary"),
     performance: { now: () => 0 },
+    requestAnimationFrame: () => 0,
     navigator: { language: "en", languages: ["en"] },
     localStorage: {
       getItem: (key) => {
@@ -106,6 +107,9 @@ function loadMechLab({
   vm.createContext(sandbox);
   vm.runInContext(loadoutUrlCodecSource, sandbox, { filename: "public/loadout-url-codec.js" });
   vm.runInContext(quirkSource, sandbox, { filename: "public/quirk-calculations.js" });
+  for (const name of ["mwo-codec.js", "mwo-skill-codec.js", "skill-tree-topology.js", "skill-tree.js"]) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "public", name), "utf8"), sandbox, { filename: `public/${name}` });
+  }
   vm.runInContext(source, sandbox, { filename: "public/app.js" });
   return sandbox.__MWOLAB_TEST_API__;
 }
@@ -493,7 +497,7 @@ test("개인설정은 프로필 왼쪽에 있고 새 선택에만 적용하며 I
   assert.match(styles, /\.initial-fitting-options input:checked \+ span/);
   assert.match(app, /preserveCurrentBuild \? state.currentBuild : buildForMechSelection\(nextMech\)/);
   assert.match(app, /function loadBuild\(mech\) \{\s*return buildFromLoadout\(mech\)/);
-  const imported = app.match(/function importMwoCode\([\s\S]*?(?=\nfunction describeMwoCode)/)[0];
+  const imported = app.match(/function validateImportCodes\([\s\S]*?(?=\nfunction describeMwoCode)/)[0];
   assert.doesNotMatch(imported, /buildForMechSelection/);
   assert.match(imported, /buildFromMwoCode\(decoded, mech\)/);
 });
@@ -4175,4 +4179,258 @@ test("고정 9032는 AMAROK 무기·탄약·시뮬레이션에 공용 Modifier�
   assert.equal(ammoGroups.length, 1);
   assert.equal(ammoGroups[0].volleys, 12);
   closeTo(ammoGroups[0].totalDamage, 96);
+});
+
+
+test("스킬 프리셋과 수동 수정은 노드 상태와 명시 모드를 유지한다", () => {
+  const skillsApi = loadMechLab();
+  skillsApi.state.skills = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/skills.json"), "utf8"));
+  skillsApi.setSkillSelectionMode("all");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 239);
+  assert.equal(skillsApi.state.skillSelectionMode, "all");
+  skillsApi.toggleSkillNode("Range15");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 238);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+  skillsApi.toggleSkillNode("Range15");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 239);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+  skillsApi.setSkillSelectionMode("mechlab");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  assert.equal(skillsApi.state.skillSelectionMode, "mechlab");
+  skillsApi.toggleSkillNodeGroup("operations:CoolRun", false);
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 90);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+  skillsApi.toggleSkillNodeGroup("operations:CoolRun", true);
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+  skillsApi.setSkillSelectionMode("custom");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  skillsApi.state.skillEffectsCache.set("stale", []);
+  skillsApi.state.mechlabQuirkValuesCache.set("stale", {});
+  skillsApi.setSkillSelectionMode("none");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 0);
+  assert.equal(skillsApi.state.skillSelectionMode, "none");
+  assert.equal(skillsApi.state.skillEffectsCache.size, 0);
+  assert.equal(skillsApi.state.mechlabQuirkValuesCache.size, 0);
+  skillsApi.toggleSkillNode("Range1");
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 1);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+});
+
+test("선택 노드만 기존 scope·조건 계산에 반영하며 두 캐시가 노드 집합을 구분한다", () => {
+  const skillsApi = loadMechLab();
+  skillsApi.state.skills = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/skills.json"), "utf8"));
+  const mech = { id: "skill-fixture", faction: "InnerSphere", weight_class: "Light", definition: {
+    stats: { MaxTons: 35, MaxJumpJets: 0 }, movement: { MaxTorsoAngleYaw: 360 },
+    components: { centre_torso: { hardpoints: [] } }, quirks: [],
+  } };
+  const build = { components: {}, upgrades: {} };
+  const effect = name => skillsApi.selectedSkillEffects(mech, build).find(e => e.name === name)?.value || 0;
+  skillsApi.state.selectedSkillNodes = new Set(["Cooldown1", "ArmorHardening1", "SkeletalDensity1", "EnhancedECM1", "LiftSpeed1", "TorsoYaw1"]);
+  assert.equal(effect("all_cooldown_multiplier"), -0.0075);
+  assert.equal(effect("increasedarmor_multiplier"), 0.023);
+  assert.equal(effect("increasedstructure_multiplier"), 0.038);
+  assert.ok(skillsApi.selectedSkillEffects(mech, build).every(e => e.contributions.every(c => !["EnhancedECM1", "LiftSpeed1", "TorsoYaw1"].includes(c.skillNode))));
+  assert.equal(skillsApi.mechlabQuirkValues(mech, build).all_cooldown_multiplier, -0.0075);
+  skillsApi.state.selectedSkillNodes.add("Cooldown2");
+  assert.equal(effect("all_cooldown_multiplier"), -0.015);
+  assert.equal(skillsApi.mechlabQuirkValues(mech, build).all_cooldown_multiplier, -0.015);
+  const clan = { ...mech, id: "clan-fixture", faction: "Clan" };
+  assert.equal(skillsApi.selectedSkillEffects(clan, build).find(e => e.name === "all_cooldown_multiplier").value, -0.012);
+  const capable = { ...mech, id: "ecm-fixture", definition: { ...mech.definition, components: { centre_torso: { CanEquipECM: 1, hardpoints: [] } } } };
+  assert.ok(skillsApi.skillEffectsForNodes(new Set(["EnhancedECM1"]), capable, build).length > 0);
+});
+
+
+test("스킬 미적용 사유는 추출 조건과 멕 지원 여부를 따르고 효과 계산과 일치한다", () => {
+  const api = loadMechLab();
+  api.state.skills = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/skills.json"), "utf8"));
+  const nodes = api.skillSelectionGraph().nodes;
+  const mech = { id: "unsupported-skills", faction: "InnerSphere", weight_class: "Light", definition: {
+    stats: { MaxTons: 35, MaxJumpJets: 0 }, movement: { MaxTorsoAngleYaw: 360 },
+    components: { centre_torso: { hardpoints: [] } }, quirks: [],
+  } };
+  const build = { components: {}, upgrades: {} };
+  for (const [name, reason] of Object.entries({
+    LiftSpeed1: "skills.noJumpJets", VentCalibration1: "skills.noJumpJets", HeatShielding1: "skills.noJumpJets",
+    EnhancedECM1: "skills.noECM", EnhancedNARC1: "skills.noMissileHardpoint", TorsoYaw1: "skills.fullTorsoTwist",
+  })) {
+    assert.equal(api.skillNodeRequirementFailure(nodes.get(name), mech, build), reason, name);
+    assert.equal(api.skillNodeRequirementsMet(nodes.get(name), mech, build), false, name);
+    assert.equal(api.skillEffectsForNodes(new Set([name]), mech, build).length, 0, name);
+  }
+  // Vectoring has no extracted JumpJets requirement; category membership is not a condition.
+  assert.equal(api.skillNodeRequirementFailure(nodes.get("Vectoring1"), mech, build), "");
+  const supported = { ...mech, id: "supported-skills", definition: { ...mech.definition,
+    stats: { MaxTons: 35, MaxJumpJets: 1 }, movement: { MaxTorsoAngleYaw: 90 },
+    components: { centre_torso: { CanEquipECM: 1, hardpoints: [{ hardpoint_type: "missile" }] } },
+  } };
+  // The empty build has no installed equipment. Existing conditions test chassis capability.
+  for (const name of ["LiftSpeed1", "EnhancedECM1", "EnhancedNARC1", "TorsoYaw1"]) {
+    assert.equal(api.skillNodeRequirementFailure(nodes.get(name), supported, build), "", name);
+    assert.ok(api.skillNodeRequirementsMet(nodes.get(name), supported, build), name);
+    assert.ok(api.skillEffectsForNodes(new Set([name]), supported, build).length > 0, name);
+  }
+});
+
+test("독립 핏팅 분석은 현재 스킬을 제외하고 선택 및 모드를 복구한다", () => {
+  const read = name => JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/" + name + ".json"), "utf8"));
+  const create = () => {
+    const instance = loadMechLab();
+    Object.assign(instance.state, { skills: read("skills"), mechs: read("mechs"), equipment: read("equipment"), loadouts: read("loadouts"), omnipods: read("omnipods") });
+    return instance;
+  };
+  const active = create(), baseline = create();
+  const mech = active.state.mechs.find(m => m.faction === "InnerSphere" && m.definition.stats.MaxTons === 35);
+  const build = active.buildForMechSelection(mech);
+  const code = require("../public/mwo-codec.js").encode(active.buildAsMwoLoadout(mech, build));
+  active.setSkillSelectionMode("all");
+  const selection = active.state.selectedSkillNodes;
+  const result = active.analyzeMwoCode(code);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), JSON.parse(JSON.stringify(baseline.analyzeMwoCode(code))));
+  assert.equal(active.state.selectedSkillNodes, selection);
+  assert.equal(active.state.selectedSkillNodes.size, 239);
+  assert.equal(active.state.skillSelectionMode, "all");
+  assert.equal(active.state.selectedMech, null);
+  assert.equal(active.state.currentBuild, null);
+});
+
+
+test("스킬 되돌리기는 반복 수정 중 진입 기준을 유지하고 재진입 때 갱신한다", () => {
+  const overlay = { hidden: true };
+  const skillsApi = loadMechLab({ elements: { "skill-overlay": overlay, "open-skills": { focus() {} } } });
+  skillsApi.state.skills = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/skills.json"), "utf8"));
+  const open = () => {
+    skillsApi.state.selectedMech = {};
+    skillsApi.state.currentBuild = {};
+    skillsApi.openSkillDialog();
+    skillsApi.state.selectedMech = null;
+    skillsApi.state.currentBuild = null;
+  };
+  skillsApi.setSkillSelectionMode("all");
+  open();
+  skillsApi.toggleSkillNode("Range15");
+  open(); // An already open dialog must not replace the entry snapshot.
+  skillsApi.revertSkillSelection();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 239);
+  assert.equal(skillsApi.state.skillSelectionMode, "all");
+  skillsApi.toggleSkillNodeGroup("firepower:Range", false);
+  skillsApi.state.skillEffectsCache.set("stale", []);
+  skillsApi.state.mechlabQuirkValuesCache.set("stale", {});
+  skillsApi.revertSkillSelection();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 239);
+  assert.equal(skillsApi.state.skillEffectsCache.size, 0);
+  assert.equal(skillsApi.state.mechlabQuirkValuesCache.size, 0);
+  skillsApi.setSkillSelectionMode("mechlab");
+  skillsApi.closeSkillDialog({ apply: true });
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  open();
+  skillsApi.setSkillSelectionMode("all");
+  skillsApi.revertSkillSelection();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  assert.equal(skillsApi.state.skillSelectionMode, "mechlab");
+  skillsApi.closeSkillDialog({ apply: true });
+  skillsApi.toggleSkillNode("Range15");
+  skillsApi.revertSkillSelection();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 94);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+});
+
+
+test("스킬 취소 닫기는 진입 상태를 복원하고 적용 닫기만 편집을 유지한다", () => {
+  const skillsApi = loadMechLab({ elements: { "skill-overlay": { hidden: true }, "open-skills": { focus() {} } } });
+  skillsApi.state.skills = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/skills.json"), "utf8"));
+  const open = () => {
+    skillsApi.state.selectedMech = {}; skillsApi.state.currentBuild = {};
+    skillsApi.openSkillDialog();
+    skillsApi.state.selectedMech = null; skillsApi.state.currentBuild = null;
+  };
+  skillsApi.setSkillSelectionMode("mechlab");
+  open();
+  skillsApi.setSkillSelectionMode("all");
+  skillsApi.closeSkillDialog();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 95);
+  assert.equal(skillsApi.state.skillSelectionMode, "mechlab");
+  open();
+  skillsApi.toggleSkillNode("Range15");
+  skillsApi.closeSkillDialog({ apply: true });
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 94);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+  open();
+  skillsApi.setSkillSelectionMode("all");
+  skillsApi.closeSkillDialog();
+  assert.equal(skillsApi.state.selectedSkillNodes.size, 94);
+  assert.equal(skillsApi.state.skillSelectionMode, "custom");
+});
+
+
+test("코드 불러오기는 두 오류를 독립 검증하고 실패 시 피팅·스킬·모드를 유지한다", () => {
+  const instance = loadMechLab();
+  for (const name of ["mechs", "equipment", "loadouts", "omnipods", "skills"]) {
+    instance.state[name] = JSON.parse(fs.readFileSync(path.join(__dirname, "../public/data/" + name + ".json"), "utf8"));
+  }
+  const mech = instance.state.mechs.find(m => m.faction === "InnerSphere" && m.definition.stats.MaxTons === 35);
+  const build = instance.buildForMechSelection(mech);
+  const code = require("../public/mwo-codec.js").encode(instance.buildAsMwoLoadout(mech, build));
+  instance.state.selectedMech = mech;
+  instance.state.currentBuild = build;
+  instance.state.selectedSkillNodes = new Set(["Range1"]);
+  instance.state.skillSelectionMode = "custom";
+  const selection = instance.state.selectedSkillNodes;
+  for (const [loadout, skill, errors] of [
+    [code, "bad-skill", ["skill"]], ["bad-loadout", "bad-skill", ["loadout", "skill"]],
+    ["bad-loadout", "a" + "0".repeat(60), ["loadout"]],
+  ]) {
+    assert.throws(() => instance.importMwoCode(loadout, { skillCode: skill }), error => {
+      assert.deepEqual(Object.keys(error.fields).sort(), errors.sort());
+      return true;
+    });
+    assert.equal(instance.state.currentBuild, build);
+    assert.equal(instance.state.selectedMech, mech);
+    assert.equal(instance.state.selectedSkillNodes, selection);
+    assert.equal(instance.state.skillSelectionMode, "custom");
+  }
+  for (const absent of [undefined, null, "", "  "]) {
+    const prepared = instance.validateImportCodes(code, absent);
+    assert.equal(prepared.selectedSkills, null);
+    instance.applyImportedSkills(prepared.selectedSkills);
+    assert.equal(instance.state.selectedSkillNodes, selection);
+  }
+  const empty = instance.validateImportCodes(code, "a" + "0".repeat(60));
+  instance.state.skillEffectsCache.set("stale", []);
+  instance.applyImportedSkills(empty.selectedSkills);
+  assert.equal(instance.state.selectedSkillNodes.size, 0);
+  assert.equal(instance.state.skillEffectsCache.size, 0);
+});
+
+test("공유 URL은 명시된 스킬만 포함하고 OFF 및 일반 탐색에서 이전 skil을 제거한다", async () => {
+  const instance = loadMechLab({ windowHref: "http://localhost/?lang=en&loadout=old&skil=stale&mech=1" });
+  const skill = "a" + "0".repeat(60);
+  const included = new URL(await instance.sharedLoadoutUrl("test-code", skill));
+  assert.equal(included.searchParams.get("skil"), skill);
+  assert.equal(included.searchParams.getAll("skil").length, 1);
+  assert.equal(await instance.decodeSharedLoadoutValue(included.searchParams.get("loadout")), "test-code");
+  const omitted = new URL(await instance.sharedLoadoutUrl("test-code"));
+  assert.equal(omitted.searchParams.has("skil"), false);
+  assert.equal(new URL(instance.mechNavigationUrl("12"), "http://localhost").searchParams.has("skil"), false);
+});
+
+test("스킬 EXPORT는 91개까지 허용하고 초과·미지원 노드는 코드 없이 오류를 반환한다", () => {
+  const instance = loadMechLab();
+  const names = require("../public/mwo-skill-codec.js").nodes.filter(Boolean);
+  const selected = new Set(names.slice(0, 91));
+  const valid = instance.skillExportResult(selected);
+  assert.equal(valid.errors.length, 0);
+  assert.equal(require("../public/mwo-skill-codec.js").decode(valid.code).size, 91);
+  selected.add(names[91]);
+  const invalid = instance.skillExportResult(selected);
+  assert.equal(invalid.code, "");
+  assert.match(invalid.errors[0], /91.*92/);
+  assert.equal(selected.size, 92); // Export validation must not clamp calculation state.
+  const unknown = instance.skillExportResult(new Set(["unknown-skill"]));
+  assert.equal(unknown.code, "");
+  assert.equal(unknown.errors.length, 1);
+  const empty = instance.skillExportResult(new Set());
+  assert.equal(empty.code, "");
+  assert.equal(empty.errors.length, 0);
 });

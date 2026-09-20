@@ -9,7 +9,8 @@
     <meta name="description" content="MWO MechLab and build planner for MechWarrior Online. Compare mechs, equipment, quirks, hardpoints, loadouts, damage, heat and mobility stats.">
     <meta name="robots" content="max-image-preview:none">
     <link rel="canonical" href="https://kmonkeyhead.github.io/mwolab/">
-  <link rel="stylesheet" href="styles.css?v=20260907-1">
+  <link rel="stylesheet" href="styles.css?v=20260920-3">
+  <link rel="stylesheet" href="skill-tree.css?v=20260920-4">
   </head>
   <body>
     <div id="app">
@@ -533,11 +534,19 @@
       <section class="build-actions-dialog skill-dialog" role="dialog" aria-modal="true" aria-labelledby="skill-dialog-title">
         <header>
           <h2 id="skill-dialog-title" data-i18n="skills.title">스킬 적용</h2>
-          <button id="close-skill-x" class="build-actions-close" type="button" aria-label="Close">X</button>
+          <div class="skill-selection-modes" role="group" aria-label="스킬 적용 모드" data-i18n-aria-label="skills.modeLabel">
+            <button type="button" data-skill-mode="all" aria-pressed="false" data-i18n="skills.applyAll">모두 적용</button>
+            <button type="button" data-skill-mode="mechlab" aria-pressed="false" data-i18n="skills.applyRecommended">멕랩용 UI 스킬 적용</button>
+            <button type="button" data-skill-mode="custom" aria-pressed="true" data-i18n="skills.custom">커스텀</button>
+            <button type="button" data-skill-mode="none" aria-pressed="false" data-i18n="skills.none">미적용</button>
+          </div>
+          <button id="close-skill-x" class="build-actions-close" type="button" aria-label="적용하지 않고 닫기" data-i18n-aria-label="skills.cancel">X</button>
         </header>
-        <p class="skill-dialog-description" data-i18n="skills.description">활성화한 카테고리의 사용 가능한 모든 노드를 적용합니다.</p>
-        <div id="skill-category-options" class="mech-filter-options skill-category-options" role="group" aria-labelledby="skill-dialog-title"></div>
-        <button id="close-skill" class="build-actions-cancel" type="button" data-i18n="skills.close">닫기</button>
+        <div id="skill-tree" class="skill-tree"></div>
+        <div class="skill-dialog-actions">
+          <button id="revert-skills" type="button" data-i18n="skills.revert">되돌리기</button>
+          <button id="close-skill" class="build-actions-cancel" type="button" data-i18n="skills.close">적용 및 닫기</button>
+        </div>
       </section>
     </div>
 
@@ -625,7 +634,13 @@
         </header>
         <label class="loadout-code-field">
           <span data-i18n="loadout.codeLabel">EXPORT 코드</span>
-          <textarea id="loadout-code-text" rows="5" spellcheck="false" autocomplete="off"></textarea>
+          <textarea id="loadout-code-text" rows="3" spellcheck="false" autocomplete="off" aria-describedby="loadout-code-error"></textarea>
+          <span id="loadout-code-error" class="loadout-field-error" hidden></span>
+        </label>
+        <label id="skill-code-field" class="loadout-code-field">
+          <span data-i18n="loadout.skillCodeLabel">스킬 EXPORT 코드</span>
+          <textarea id="skill-code-text" rows="2" spellcheck="false" autocomplete="off" aria-describedby="skill-code-error"></textarea>
+          <span id="skill-code-error" class="loadout-field-error" hidden></span>
         </label>
         <label id="loadout-url-field" class="loadout-code-field" hidden>
           <span data-i18n="loadout.urlLabel">공유 URL</span>
@@ -633,8 +648,10 @@
         </label>
         <p id="loadout-code-status" class="loadout-code-status" aria-live="polite"></p>
         <div class="loadout-code-dialog-actions">
+          <label id="share-skills-control" class="share-skills-control"><input id="share-skills" type="checkbox" checked><span data-i18n="loadout.includeSkills">스킬도 포함</span></label>
           <button id="apply-loadout-code" type="button" data-i18n="loadout.apply">불러오기</button>
           <button id="copy-loadout-url" type="button" data-i18n="loadout.copyUrl">URL 복사</button>
+          <button id="copy-skill-code" type="button" data-i18n="loadout.copySkill" hidden>스킬 복사</button>
           <button id="copy-loadout-code" type="button" data-i18n="loadout.copy">코드 복사</button>
           <button id="close-loadout-code-mobile" class="mobile-loadout-code-close" type="button" aria-label="닫기" hidden>×</button>
         </div>
@@ -921,9 +938,12 @@
     <div id="equipment-tooltip" class="equipment-tooltip" role="tooltip" hidden></div>
 
     <script src="mwo-codec.js"></script>
+    <script src="mwo-skill-codec.js?v=20260920-1"></script>
     <script src="loadout-url-codec.js?v=20260901-1"></script>
     <script src="quirk-calculations.js?v=20260728-1"></script>
-    <script src="app.js?v=20260909-1"></script>
+    <script src="skill-tree-topology.js?v=20260920-1"></script>
+    <script src="skill-tree.js?v=20260920-6"></script>
+    <script src="app.js?v=20260920-8"></script>
     <script type="module" src="firebase-community.js?v=20260909-1"></script>
     <!-- Cloudflare Web Analytics -->
     <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"371a16733dad455d9764c3fb51683381"}'></script>

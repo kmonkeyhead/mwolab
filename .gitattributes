@@ -1,0 +1,3 @@
+# Evidence snapshots are verified by SHA-256; preserve their original bytes.
+tests/fixtures/mwoskill2-index.html -text
+tests/fixtures/mwoskill2-skill-map.js -text

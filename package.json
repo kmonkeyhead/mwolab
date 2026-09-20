@@ -4,7 +4,7 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "test:all": "node --test tests/*.test.js && python -m unittest tests/test_extract_mwo_data.py tests/test_extract_mwo_mech_icons.py && npm --prefix admin test",
-    "test:formulas": "node --test tests/mechlab-formulas.test.js",
+    "test:formulas": "node --test tests/mechlab-formulas.test.js tests/skill-tree.test.js tests/mwo-skill-codec.test.js",
     "test:quirks": "node --test tests/quirk-calculations.test.js",
     "test:data": "node --test tests/generated-data.test.js",
     "test:community": "node --test tests/firebase-community-config.test.js",

@@ -32,6 +32,7 @@ let mechFilterTrigger = null;
 let loadoutCodeTrigger = null;
 const LOCAL_BUILDS_STORAGE_KEY = "mwolab:local-builds:v1";
 const SHARED_LOADOUT_QUERY_PARAM = "loadout";
+const SHARED_SKILL_QUERY_PARAM = "skil";
 const SHARED_PUBLIC_FITTING_QUERY_PARAM = "fitting";
 let sharedLoadoutNavigationSequence = 0;
 const MAIN_TAB_NAMES = new Set(["mechlab", "equipment-info", "info", "compare", "stats"]);
@@ -150,11 +151,31 @@ const TEXT = {
     "community.loginToLike": "로그인 후 좋아요를 사용할 수 있습니다.",
     "skills.open": "스킬 적용",
     "skills.title": "스킬 적용",
-    "skills.description": "활성화한 항목의 사용 가능한 모든 노드를 적용합니다.",
+    "skills.description": "선택한 노드의 효과를 현재 멕에 적용합니다.",
     "skills.applyAll": "모두 적용",
-    "skills.applyRecommended": "추천 스킬 적용",
+    "skills.applyRecommended": "멕랩용 UI 스킬 적용",
+    "skills.custom": "커스텀",
+    "skills.modeLabel": "스킬 적용 모드",
+    "skills.selectedCount": "선택 {count}개 · 계산용",
+    "skills.effectCount": "효과 {count}개",
+    "skills.treeHint": "드래그 이동 · 휠 확대/축소",
+    "skills.fit": "전체 보기",
+    "skills.zoomIn": "확대",
+    "skills.zoomOut": "축소",
+    "skills.unavailable": "현재 멕에는 효과가 적용되지 않음",
+    "skills.noJumpJets": "점프젯 없음",
+    "skills.noECM": "ECM 없음",
+    "skills.noMissileHardpoint": "미사일 하드포인트 없음",
+    "skills.fullTorsoTwist": "360도 몸통 회전",
+    "skills.details": "노드 상세 효과",
+    "skills.selectGroup": "전체 선택/해제",
     "skills.nodeCount": "{count}개 노드",
-    "skills.close": "닫기",
+    "skills.close": "적용 및 닫기",
+    "skills.cancel": "적용하지 않고 닫기",
+    "skills.revert": "되돌리기",
+    "skills.allocated": "할당한 노드",
+    "skills.selectedEffects": "선택한 스킬 효과",
+    "skills.noEffects": "적용되는 스킬 효과 없음",
     "skills.category.firepower": "화력",
     "skills.category.survival": "생존",
     "skills.category.mobility": "기동성",
@@ -211,6 +232,17 @@ const TEXT = {
     "loadout.copy": "코드 복사",
     "loadout.copyUrl": "URL 복사",
     "loadout.codeLabel": "EXPORT 코드",
+    "loadout.skillCodeLabel": "스킬 EXPORT 코드",
+    "loadout.copySkill": "스킬 복사",
+    "loadout.skillCopied": "스킬 코드를 클립보드에 복사했습니다.",
+    "loadout.skillPointLimit": "스킬 노드가 91개를 초과했습니다. (현재 {count}개)",
+    "loadout.skillExportFailed": "스킬 코드를 생성할 수 없습니다.",
+    "skills.none": "미적용",
+    "loadout.includeSkills": "스킬도 포함",
+    "loadout.skillPlaceholder": "MWO 스킬 코드를 붙여 넣으세요. 비워 두면 현재 스킬을 유지합니다.",
+    "loadout.invalidSkillCode": "스킬 코드 형식이 올바르지 않습니다.",
+    "loadout.unsupportedSkillBit": "현재 지원하지 않는 스킬이 포함되어 있습니다.",
+    "loadout.validationFailed": "코드 오류를 확인하세요. 불러오지 않았습니다.",
     "loadout.urlLabel": "공유 URL",
     "loadout.importTitle": "MWO 코드 불러오기",
     "loadout.exportTitle": "MWO 코드 내보내기",
@@ -762,11 +794,31 @@ const TEXT = {
     "community.loginToLike": "Sign in to like this fitting.",
     "skills.open": "Apply skills",
     "skills.title": "Apply skills",
-    "skills.description": "Applies every available node in each enabled group.",
+    "skills.description": "Applies selected nodes to the current mech.",
     "skills.applyAll": "Apply all",
-    "skills.applyRecommended": "Apply recommended",
+    "skills.applyRecommended": "MechLab UI skills",
+    "skills.custom": "Custom",
+    "skills.modeLabel": "Skill selection mode",
+    "skills.selectedCount": "{count} selected · calculation mode",
+    "skills.effectCount": "{count} effects",
+    "skills.treeHint": "Drag to pan · Scroll to zoom",
+    "skills.fit": "Show all",
+    "skills.zoomIn": "Zoom in",
+    "skills.zoomOut": "Zoom out",
+    "skills.unavailable": "No effect on the current mech",
+    "skills.noJumpJets": "No jump jets",
+    "skills.noECM": "No ECM",
+    "skills.noMissileHardpoint": "No missile hardpoint",
+    "skills.fullTorsoTwist": "360° torso twist",
+    "skills.details": "Node effect details",
+    "skills.selectGroup": "Select/clear group",
     "skills.nodeCount": "{count} nodes",
-    "skills.close": "Close",
+    "skills.close": "Apply and close",
+    "skills.cancel": "Close without applying",
+    "skills.revert": "Revert",
+    "skills.allocated": "Allocated nodes",
+    "skills.selectedEffects": "Selected skill effects",
+    "skills.noEffects": "No applicable skill effects",
     "skills.category.firepower": "Firepower",
     "skills.category.survival": "Survival",
     "skills.category.mobility": "Mobility",
@@ -823,6 +875,17 @@ const TEXT = {
     "loadout.copy": "Copy code",
     "loadout.copyUrl": "Copy URL",
     "loadout.codeLabel": "EXPORT CODE",
+    "loadout.skillCodeLabel": "SKILL EXPORT CODE",
+    "loadout.copySkill": "Copy skills",
+    "loadout.skillCopied": "Skill code copied to clipboard.",
+    "loadout.skillPointLimit": "Skill selection exceeds 91 nodes. ({count} selected)",
+    "loadout.skillExportFailed": "Unable to generate the skill code.",
+    "skills.none": "None",
+    "loadout.includeSkills": "Include skills",
+    "loadout.skillPlaceholder": "Paste an MWO skill code. Leave blank to keep current skills.",
+    "loadout.invalidSkillCode": "Invalid skill code format.",
+    "loadout.unsupportedSkillBit": "The code contains an unsupported skill.",
+    "loadout.validationFailed": "Check the code errors. Nothing was imported.",
     "loadout.urlLabel": "SHARE URL",
     "loadout.importTitle": "Import MWO code",
     "loadout.exportTitle": "Export MWO code",
@@ -1361,6 +1424,7 @@ function closeHelpDialog() {
 function mechNavigationUrl(mechId = "") {
   const url = new URL(window.location.href);
   url.searchParams.delete(SHARED_LOADOUT_QUERY_PARAM);
+  url.searchParams.delete(SHARED_SKILL_QUERY_PARAM);
   url.searchParams.delete(SHARED_PUBLIC_FITTING_QUERY_PARAM);
   url.searchParams.delete("tab");
   if (mechId) url.searchParams.set("mech", mechId);
@@ -1371,6 +1435,7 @@ function mechNavigationUrl(mechId = "") {
 function mainTabNavigationUrl(tabName, mechId = null) {
   const url = new URL(window.location.href);
   url.searchParams.delete(SHARED_LOADOUT_QUERY_PARAM);
+  url.searchParams.delete(SHARED_SKILL_QUERY_PARAM);
   url.searchParams.delete(SHARED_PUBLIC_FITTING_QUERY_PARAM);
   if (tabName === "mechlab") url.searchParams.delete("tab");
   else url.searchParams.set("tab", tabName);
@@ -1381,18 +1446,19 @@ function mainTabNavigationUrl(tabName, mechId = null) {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function sharedLoadoutUrlForValue(sharedValue) {
+function sharedLoadoutUrlForValue(sharedValue, skillCode = null) {
   const url = new URL(window.location.href);
   if (globalThis.__MWOLAB_MOBILE__) {
     url.pathname = url.pathname.replace(/\/mobile(?:\/index\.html)?\/?$/i, "/");
   }
   const language = url.searchParams.get("lang");
   const remainingParams = Array.from(url.searchParams.entries())
-    .filter(([name]) => !["lang", "tab", "mech", SHARED_LOADOUT_QUERY_PARAM, SHARED_PUBLIC_FITTING_QUERY_PARAM].includes(name));
+    .filter(([name]) => !["lang", "tab", "mech", SHARED_LOADOUT_QUERY_PARAM, SHARED_SKILL_QUERY_PARAM, SHARED_PUBLIC_FITTING_QUERY_PARAM].includes(name));
   url.search = "";
   if (language) url.searchParams.set("lang", language);
   remainingParams.forEach(([name, value]) => url.searchParams.append(name, value));
   url.searchParams.set(SHARED_LOADOUT_QUERY_PARAM, String(sharedValue || ""));
+  if (skillCode) url.searchParams.set(SHARED_SKILL_QUERY_PARAM, skillCode);
   return url.href;
 }
 
@@ -1416,8 +1482,23 @@ async function decodeSharedLoadoutValue(value) {
   }
 }
 
-async function sharedLoadoutUrl(code) {
-  return sharedLoadoutUrlForValue(await encodeSharedLoadoutValue(code));
+async function validateSharedImport(value, skillCode) {
+  let code;
+  try { code = await decodeSharedLoadoutValue(value); }
+  catch (error) {
+    // Validate both fields even when the loadout transport itself is damaged.
+    try { validateImportCodes("", skillCode); }
+    catch (validationError) {
+      validationError.fields.loadout = error.message;
+      validationError.message = Object.entries(validationError.fields).map(([key, message]) => `${t(key === "loadout" ? "loadout.codeLabel" : "loadout.skillCodeLabel")}: ${message}`).join("\n");
+      throw validationError;
+    }
+  }
+  return { code, prepared: validateImportCodes(code, skillCode) };
+}
+
+async function sharedLoadoutUrl(code, skillCode = null) {
+  return sharedLoadoutUrlForValue(await encodeSharedLoadoutValue(code), skillCode);
 }
 
 function publicFittingUrl(fittingId) {
@@ -1544,9 +1625,9 @@ function cancelSharedFittingRequest() {
   }
 }
 
-async function replaceSharedLoadoutNavigation(code, sourceValue = null) {
+async function replaceSharedLoadoutNavigation(code, sourceValue = null, skillCode = null) {
   const sourceHref = window.location.href;
-  const url = await sharedLoadoutUrl(code);
+  const url = await sharedLoadoutUrl(code, skillCode);
   if (window.location.href !== sourceHref) return false;
   if (
     sourceValue !== null
@@ -1618,6 +1699,8 @@ function refreshOpenDialogTranslations() {
       importing ? "loadout.importDescription" : "loadout.exportDescription",
     );
     $("loadout-code-text").placeholder = importing ? t("loadout.importPlaceholder") : "";
+    if ($("skill-code-text")) $("skill-code-text").placeholder = importing ? t("loadout.skillPlaceholder") : "";
+    if (!importing && $("skill-code-text")) renderExportedSkills();
     const urlText = $("loadout-url-text");
     if (!importing && urlText?.value) {
       const url = new URL(urlText.value, window.location.href);
@@ -2104,51 +2187,6 @@ const DIRECT_SPREAD_QUIRKS = new Set([
   "missile_spread_multiplier",
   "ballistic_spread_multiplier",
 ]);
-const SKILL_SELECTION_GROUP_DEFINITIONS = Object.freeze([
-  Object.freeze({ key: "firepower:cooldown", category: "firepower", subcategories: ["Cooldown"], labelKey: "skills.group.firepowerCooldown" }),
-  Object.freeze({ key: "firepower:range", category: "firepower", subcategories: ["Range"], labelKey: "skills.group.firepowerRange" }),
-  Object.freeze({ key: "firepower:heatgen", category: "firepower", subcategories: ["HeatGen"], labelKey: "skills.group.firepowerHeatGen" }),
-  Object.freeze({ key: "firepower:velocity", category: "firepower", subcategories: ["Velocity"], labelKey: "skills.group.firepowerVelocity" }),
-  Object.freeze({
-    key: "firepower:other",
-    category: "firepower",
-    excludeSubcategories: ["Cooldown", "Range", "HeatGen", "Velocity"],
-    labelKey: "skills.group.firepowerOther",
-  }),
-  Object.freeze({ key: "survival", category: "survival", labelKey: "skills.category.survival" }),
-  Object.freeze({ key: "mobility", category: "mobility", labelKey: "skills.category.mobility" }),
-  Object.freeze({ key: "jumpjets", category: "jumpjets", labelKey: "skills.category.jumpjets" }),
-  Object.freeze({
-    key: "operations:coolrun",
-    category: "operations",
-    subcategories: ["CoolRun"],
-    labelKey: "skills.group.operationsCoolRun",
-  }),
-  Object.freeze({
-    key: "operations:heatcontainment",
-    category: "operations",
-    subcategories: ["HeatContainment"],
-    labelKey: "skills.group.operationsHeatContainment",
-  }),
-  Object.freeze({
-    key: "operations:other",
-    category: "operations",
-    excludeSubcategories: ["CoolRun", "HeatContainment"],
-    labelKey: "skills.group.operationsOther",
-  }),
-  Object.freeze({ key: "sensors", category: "sensors", labelKey: "skills.category.sensors" }),
-  Object.freeze({ key: "auxiliary", category: "auxiliary", labelKey: "skills.category.auxiliary" }),
-]);
-const RECOMMENDED_SKILL_GROUP_KEYS = Object.freeze([
-  "firepower:cooldown",
-  "firepower:range",
-  "firepower:heatgen",
-  "firepower:velocity",
-  "survival",
-  "operations:coolrun",
-  "operations:heatcontainment",
-]);
-
 const QUIRK_VALUE_DISPLAY_STORAGE_KEY = "mwolab:quirk-value-display";
 const QUIRK_VALUE_DISPLAY_MODES = new Set(["final", "quirk", "all"]);
 const SIMPLIFY_AMMO_QUIRKS_STORAGE_KEY = "mwolab:simplify-ammo-quirks";
@@ -2191,7 +2229,8 @@ const state = {
   loadouts: {},
   omnipods: {},
   skills: { categories: [], node_count: 0 },
-  selectedSkillGroups: new Set(),
+  selectedSkillNodes: new Set(),
+  skillSelectionMode: "custom",
   skillEffectsCache: new Map(),
   activeMainTab: "mechlab",
   selectedMechIdsByTab: {
@@ -4414,103 +4453,95 @@ function resolvedSkillEffectValue(effect, mech) {
   return best.value;
 }
 
-function skillNodeRequirementsMet(node, mech, build) {
+function skillNodeRequirementFailure(node, mech, build) {
   const definition = effectiveDefinition(mech, build);
-  const requirementsMet = (node?.requires || []).every((requirement) => {
+  for (const requirement of node?.requires || []) {
     if (requirement.equipment) {
-      return normalizeLookupKey(requirement.equipment) === "jumpjets"
-        && maximumJumpJets(mech, build) > 0;
+      if (normalizeLookupKey(requirement.equipment) !== "jumpjets") return "skills.unavailable";
+      if (maximumJumpJets(mech, build) <= 0) return "skills.noJumpJets";
+      continue;
     }
     if (requirement.hardpoint) {
       const requiredType = normalizeLookupKey(requirement.hardpoint);
-      return Object.values(definition.components || {}).some((component) => (
+      const supported = Object.values(definition.components || {}).some((component) => (
         (component.hardpoints || []).some((hardpoint) => (
           normalizeLookupKey(hardpointType(hardpoint)) === requiredType
         ))
       ));
+      if (!supported) return { ecm: "skills.noECM", missile: "skills.noMissileHardpoint" }[requiredType] || "skills.unavailable";
+      continue;
     }
-    return false;
-  });
-  if (!requirementsMet) return false;
+    return "skills.unavailable";
+  }
 
-  return (node?.affects || []).every((affect) => {
-    if (!affect.mechProperty) return true;
+  for (const affect of node?.affects || []) {
+    if (!affect.mechProperty) continue;
     if (normalizeLookupKey(affect.mechProperty) === "no360torsotwist") {
-      return number(definition.movement?.MaxTorsoAngleYaw) < 360;
+      if (number(definition.movement?.MaxTorsoAngleYaw) >= 360) return "skills.fullTorsoTwist";
+      continue;
     }
-    return false;
-  });
+    return "skills.unavailable";
+  }
+  return "";
 }
 
-function skillSelectionGroups() {
-  const categories = new Map(
-    (state.skills.categories || []).map((category) => [category.key, category]),
-  );
-  return SKILL_SELECTION_GROUP_DEFINITIONS
-    .map((definition) => {
-      const category = categories.get(definition.category);
-      if (!category) return null;
-      const included = new Set(definition.subcategories || []);
-      const excluded = new Set(definition.excludeSubcategories || []);
-      const nodes = (category.nodes || []).filter((node) => {
-        if (included.size) return included.has(node.subcategory);
-        if (excluded.size) return !excluded.has(node.subcategory);
-        return true;
-      });
-      return {
-        ...definition,
-        categoryName: category.name,
-        nodes,
-      };
-    })
-    .filter(Boolean);
+function skillNodeRequirementsMet(node, mech, build) {
+  return !skillNodeRequirementFailure(node, mech, build);
 }
 
-function skillEffectsForGroups(groups, mech = state.selectedMech, build = state.currentBuild) {
-  if (!mech || !build || !groups.length) return [];
+let skillGraphSource = null;
+let skillGraphCache = null;
+let skillTreeView = null;
+let skillDialogSnapshot = null;
+
+function skillSelectionGraph() {
+  if (skillGraphSource !== state.skills) {
+    skillGraphCache = globalThis.MwoLabSkillTree.createGraph(
+      state.skills.categories || [], globalThis.MwoLabSkillTopology,
+    );
+    skillGraphSource = state.skills;
+    skillTreeView?.destroy();
+    skillTreeView = null;
+  }
+  return skillGraphCache;
+}
+
+function skillEffectsForNodes(selection, mech = state.selectedMech, build = state.currentBuild) {
+  if (!mech || !build || !selection.size) return [];
   const collector = new Map();
-  const visitedNodes = new Set();
-  groups.forEach((group) => {
-    (group.nodes || []).forEach((node) => {
-      const nodeKey = `${group.category}:${node.name}`;
-      if (visitedNodes.has(nodeKey) || !skillNodeRequirementsMet(node, mech, build)) return;
-      visitedNodes.add(nodeKey);
-      (node.effects || []).forEach((effect) => {
+  for (const category of state.skills.categories || []) {
+    for (const node of category.nodes || []) {
+      if (!selection.has(node.name) || !skillNodeRequirementsMet(node, mech, build)) continue;
+      for (const effect of node.effects || []) {
         const value = resolvedSkillEffectValue(effect, mech);
-        if (!value) return;
+        if (!value) continue;
         addQuirk(collector, {
           name: String(effect.name || "").toLowerCase(),
           display_name: effect.display_name || effect.name,
           value,
-        }, `SKILLS · ${group.key}`, {
-          sourceKind: "skill",
-          skillCategory: group.category,
-          skillGroup: group.key,
-          skillNode: node.name,
+        }, `SKILLS · ${node.name}`, {
+          sourceKind: "skill", skillCategory: category.key,
+          skillGroup: `${category.key}:${node.subcategory}`, skillNode: node.name,
         });
-      });
-    });
-  });
-
-  return Array.from(collector.values())
-    .map((effect) => ({
-      ...effect,
-      value_text: quirkValueText(effect.name, effect.value),
-      source_text: Array.from(effect.sources).join(", "),
-    }))
-    .sort((left, right) => left.display_name.localeCompare(right.display_name));
+      }
+    }
+  }
+  return Array.from(collector.values()).map(effect => ({
+    ...effect, value_text: quirkValueText(effect.name, effect.value),
+    source_text: Array.from(effect.sources).join(", "),
+  })).sort((left, right) => left.display_name.localeCompare(right.display_name));
 }
 
 function selectedSkillEffects(mech = state.selectedMech, build = state.currentBuild) {
-  if (!mech || !build || state.selectedSkillGroups.size === 0) return [];
+  if (!mech || !build || state.selectedSkillNodes.size === 0) return [];
   const omnipods = COMPONENT_ORDER.map((name) => build.components?.[name]?.omnipod || "").join(":");
-  const selections = Array.from(state.selectedSkillGroups).sort().join(",");
+  const selections = Array.from(state.selectedSkillNodes).sort().join(",");
   const cacheKey = `${mech.id}:${omnipods}:${selections}`;
   const cached = state.skillEffectsCache.get(cacheKey);
   if (cached) return cached;
 
-  const effects = skillEffectsForGroups(
-    skillSelectionGroups().filter((group) => state.selectedSkillGroups.has(group.key)),
+  const effects = skillEffectsForNodes(
+    state.selectedSkillNodes,
     mech,
     build,
   );
@@ -4557,7 +4588,7 @@ function effectiveQuirkValues(mech = state.selectedMech, build = state.currentBu
 
 function mechlabQuirkValues(mech = state.selectedMech, build = state.currentBuild) {
   const omnipodKey = COMPONENT_ORDER.map((name) => build?.components?.[name]?.omnipod || "").join(":");
-  const skillKey = Array.from(state.selectedSkillGroups).sort().join(",");
+  const skillKey = Array.from(state.selectedSkillNodes).sort().join(",");
   const key = `${mech?.id || ""}:${omnipodKey}:${skillKey}`;
   if (state.mechlabQuirkValuesCache.has(key)) return state.mechlabQuirkValuesCache.get(key);
   const values = quirkValues(mechlabEffectiveQuirks(mech, build));
@@ -7945,7 +7976,7 @@ function renderMechSummaryQuirks(
 }
 
 function renderMechSummarySkillQuirks(quirks) {
-  if (state.selectedSkillGroups.size === 0) return "";
+  if (state.selectedSkillNodes.size === 0) return "";
   return `
     <section class="mech-summary-section mech-summary-quirks-section mech-summary-skill-quirks-section">
       <h3>SKILL + QUIRKS</h3>
@@ -8220,7 +8251,7 @@ function renderMechSummary(calc = null) {
 }
 
 function renderMechlabActionPanel() {
-  const skillsActive = state.selectedSkillGroups.size > 0;
+  const skillsActive = state.selectedSkillNodes.size > 0;
   return `
     <section class="mechlab-action-panel" aria-label="MechLab actions">
       <div class="community-menu" data-community-ui-entry>
@@ -13247,28 +13278,35 @@ function selectMech(id, { historyMode = "push", enterFitting = true, mechlabMode
 async function applyMechNavigationFromLocation() {
   if (!mechNavigationReady) return;
   const navigationSequence = ++sharedLoadoutNavigationSequence;
-  const params = new URL(window.location.href).searchParams;
+  const sourceHref = window.location.href;
+  const params = new URL(sourceHref).searchParams;
   if (params.has(SHARED_PUBLIC_FITTING_QUERY_PARAM)) return;
-  if (restoreMechlabHistorySnapshot(window.history.state?.mechlabSnapshot)) return;
   const sharedLoadoutCode = params.get(SHARED_LOADOUT_QUERY_PARAM);
-  if (sharedLoadoutCode) {
+  if (params.has(SHARED_LOADOUT_QUERY_PARAM)) {
     try {
-      const decodedLoadoutCode = await decodeSharedLoadoutValue(sharedLoadoutCode);
-      if (navigationSequence !== sharedLoadoutNavigationSequence) return;
+      const skillCode = params.get(SHARED_SKILL_QUERY_PARAM);
+      const { code: decodedLoadoutCode, prepared } = await validateSharedImport(sharedLoadoutCode, skillCode);
+      if (navigationSequence !== sharedLoadoutNavigationSequence || window.location.href !== sourceHref) return;
+      if (restoreMechlabHistorySnapshot(window.history.state?.mechlabSnapshot)) {
+        applyImportedSkills(prepared.selectedSkills);
+        renderAll();
+        return;
+      }
       const historyTabId = window.history.state?.fittingTabId;
-      importMwoCode(decodedLoadoutCode, {
+      commitMwoImport(prepared, {
         closeDialog: false,
         updateNavigation: false,
         historyTabId,
       });
-      await replaceSharedLoadoutNavigation(decodedLoadoutCode, sharedLoadoutCode);
+      await replaceSharedLoadoutNavigation(decodedLoadoutCode, sharedLoadoutCode, skillCode);
     } catch (error) {
-      if (navigationSequence === sharedLoadoutNavigationSequence) {
+      if (navigationSequence === sharedLoadoutNavigationSequence && window.location.href === sourceHref) {
         $("data-status").textContent = error.message;
       }
     }
     return;
   }
+  if (restoreMechlabHistorySnapshot(window.history.state?.mechlabSnapshot)) return;
   const tabParam = params.get("tab");
   const requestedTab = MAIN_TAB_NAMES.has(tabParam) ? tabParam : "mechlab";
   const requestedMechId = params.get("mech");
@@ -13309,27 +13347,32 @@ async function applyMechNavigationFromLocation() {
 async function initializeMechNavigation() {
   mechNavigationReady = true;
   const navigationSequence = ++sharedLoadoutNavigationSequence;
-  const params = new URL(window.location.href).searchParams;
+  const sourceHref = window.location.href;
+  const params = new URL(sourceHref).searchParams;
   if (params.has(SHARED_PUBLIC_FITTING_QUERY_PARAM)) {
     renderAll();
     return;
   }
   const sharedLoadoutCode = params.get(SHARED_LOADOUT_QUERY_PARAM);
-  let sharedLoadoutError = "";
-  if (sharedLoadoutCode) {
+  if (params.has(SHARED_LOADOUT_QUERY_PARAM)) {
     try {
-      const decodedLoadoutCode = await decodeSharedLoadoutValue(sharedLoadoutCode);
-      if (navigationSequence !== sharedLoadoutNavigationSequence) return;
-      importMwoCode(decodedLoadoutCode, { closeDialog: false, updateNavigation: false });
+      const skillCode = params.get(SHARED_SKILL_QUERY_PARAM);
+      const { code: decodedLoadoutCode, prepared } = await validateSharedImport(sharedLoadoutCode, skillCode);
+      if (navigationSequence !== sharedLoadoutNavigationSequence || window.location.href !== sourceHref) return;
+      commitMwoImport(prepared, { closeDialog: false, updateNavigation: false });
       try {
-        await replaceSharedLoadoutNavigation(decodedLoadoutCode, sharedLoadoutCode);
+        await replaceSharedLoadoutNavigation(decodedLoadoutCode, sharedLoadoutCode, skillCode);
       } catch (error) {
         $("data-status").textContent = error.message;
       }
       return;
     } catch (error) {
-      sharedLoadoutError = error.message;
+      if (navigationSequence === sharedLoadoutNavigationSequence && window.location.href === sourceHref) {
+        renderAll();
+        $("data-status").textContent = error.message;
+      }
     }
+    return;
   }
   const tabParam = params.get("tab");
   const requestedTab = globalThis.__MWOLAB_MOBILE__
@@ -13343,7 +13386,6 @@ async function initializeMechNavigation() {
     updateMainTabNavigation(requestedTab, "replace");
   }
   await applyMechNavigationFromLocation();
-  if (sharedLoadoutError) $("data-status").textContent = sharedLoadoutError;
 }
 
 function openMechFitting(id, { mechlabMode = null } = {}) {
@@ -13364,17 +13406,73 @@ function setLoadoutCodeStatus(message = "", tone = "") {
   status.classList.toggle("success", tone === "success");
 }
 
+function setImportCodeErrors(errors = {}) {
+  for (const [key, prefix] of [["loadout", "loadout"], ["skill", "skill"]]) {
+    const field = $(`${prefix}-code-text`), message = $(`${prefix}-code-error`);
+    field?.setAttribute("aria-invalid", String(Boolean(errors[key])));
+    if (message) { message.textContent = errors[key] || ""; message.hidden = !errors[key]; }
+  }
+}
+
+let loadoutDialogSequence = 0;
+
+function skillExportResult(selection = state.selectedSkillNodes) {
+  const errors = [];
+  if (!selection.size) return { code: "", errors };
+  if (selection.size > 91) errors.push(t("loadout.skillPointLimit", { count: selection.size }));
+  let code = "";
+  try { code = MwoSkillCodec.encode(selection); }
+  catch (error) {
+    errors.push(t(error.message === "unknown-node" ? "loadout.unsupportedSkillBit" : "loadout.skillExportFailed"));
+  }
+  return { code: errors.length ? "" : code, errors };
+}
+
+function renderExportedSkills() {
+  const { code, errors } = skillExportResult();
+  const field = $("skill-code-text"), message = $("skill-code-error");
+  field.value = code;
+  field.hidden = errors.length > 0;
+  field.setAttribute("aria-invalid", String(errors.length > 0));
+  message.textContent = errors.join("\n");
+  message.hidden = !errors.length;
+  $("copy-skill-code").hidden = !code;
+  $("share-skills-control").hidden = !code;
+  $("loadout-code-overlay").querySelector(".loadout-code-dialog")?.classList.toggle("has-skill-code", Boolean(code));
+  updateExportedSkillUrl();
+}
+
+function updateExportedSkillUrl() {
+  if (state.loadoutCodeMode !== "export" || !$("loadout-url-text").value) return;
+  const url = new URL($("loadout-url-text").value);
+  url.searchParams.delete(SHARED_SKILL_QUERY_PARAM);
+  const skillCode = $("skill-code-text").value;
+  if ($("share-skills").checked && skillCode) url.searchParams.set(SHARED_SKILL_QUERY_PARAM, skillCode);
+  $("loadout-url-text").value = url.href;
+}
+
 async function openLoadoutCodeDialog(mode) {
   if (!globalThis.MWOCodec) {
     $("data-status").textContent = t("loadout.codecUnavailable");
     return;
   }
   loadoutCodeTrigger = document.activeElement;
+  const dialogSequence = ++loadoutDialogSequence;
   state.loadoutCodeMode = mode;
   const importing = mode === "import";
   const textarea = $("loadout-code-text");
   const urlField = $("loadout-url-field");
   const urlText = $("loadout-url-text");
+  const skillText = $("skill-code-text");
+  skillText.readOnly = !importing;
+  skillText.placeholder = importing ? t("loadout.skillPlaceholder") : "";
+  skillText.value = "";
+  skillText.hidden = false;
+  $("copy-skill-code").hidden = true;
+  $("share-skills-control").hidden = true;
+  $("loadout-code-overlay").querySelector(".loadout-code-dialog")?.classList.remove("has-skill-code");
+  setImportCodeErrors();
+  if (!importing) renderExportedSkills();
   $("loadout-code-title").textContent = t(importing ? "loadout.importTitle" : "loadout.exportTitle");
   $("loadout-code-description").textContent = t(
     importing ? "loadout.importDescription" : "loadout.exportDescription",
@@ -13390,6 +13488,10 @@ async function openLoadoutCodeDialog(mode) {
   textarea.readOnly = !importing;
   textarea.placeholder = importing ? t("loadout.importPlaceholder") : "";
   setLoadoutCodeStatus();
+  urlText.value = "";
+  $("copy-loadout-url").disabled = true;
+  $("loadout-code-overlay").hidden = false;
+  document.body.classList.add("loadout-code-open");
 
   if (importing) {
     textarea.value = "";
@@ -13404,8 +13506,13 @@ async function openLoadoutCodeDialog(mode) {
     }
     if (textarea.value) {
       try {
-        urlText.value = await sharedLoadoutUrl(textarea.value);
+        const url = await sharedLoadoutUrl(textarea.value);
+        if (dialogSequence !== loadoutDialogSequence) return;
+        urlText.value = url;
+        updateExportedSkillUrl();
+        $("copy-loadout-url").disabled = false;
       } catch (error) {
+        if (dialogSequence !== loadoutDialogSequence) return;
         urlText.value = "";
         setLoadoutCodeStatus(error.message, "error");
       }
@@ -13422,6 +13529,7 @@ async function openLoadoutCodeDialog(mode) {
 
 function closeLoadoutCodeDialog() {
   if ($("loadout-code-overlay").hidden) return;
+  loadoutDialogSequence++;
   $("loadout-code-overlay").hidden = true;
   document.body.classList.remove("loadout-code-open");
   const focusTarget = loadoutCodeTrigger?.isConnected
@@ -13611,19 +13719,47 @@ function loadNamedLocalBuild(recordId) {
   }
 }
 
-function importMwoCode(code, {
+function validateImportCodes(code, skillCode = null) {
+  const errors = {};
+  let mech, build, selectedSkills = null;
+  try {
+    if (!globalThis.MWOCodec) throw new Error(t("loadout.codecUnavailable"));
+    const decoded = MWOCodec.decode(code);
+    mech = mechById(decoded.chassisId);
+    if (!mech || decoded.isOmni !== hasFixedOmnipods(mech)) {
+      throw new Error(t("loadout.invalidMech", { id: decoded.chassisId }));
+    }
+    build = buildFromMwoCode(decoded, mech);
+  } catch (error) { errors.loadout = error.message; }
+  if (String(skillCode ?? "").trim()) {
+    try { selectedSkills = MwoSkillCodec.decode(skillCode); }
+    catch (error) { errors.skill = t(error.message === "unsupported-bit" ? "loadout.unsupportedSkillBit" : "loadout.invalidSkillCode"); }
+  }
+  if (Object.keys(errors).length) {
+    const error = new Error(Object.entries(errors).map(([key, message]) => `${t(key === "loadout" ? "loadout.codeLabel" : "loadout.skillCodeLabel")}: ${message}`).join("\n"));
+    error.fields = errors;
+    throw error;
+  }
+  return { mech, build, selectedSkills };
+}
+
+function applyImportedSkills(selectedSkills) {
+  if (selectedSkills === null) return;
+  state.selectedSkillNodes = new Set(selectedSkills);
+  state.skillSelectionMode = "custom";
+  state.skillEffectsCache.clear();
+  state.mechlabQuirkValuesCache.clear();
+}
+
+function importMwoCode(code, options = {}) {
+  return commitMwoImport(validateImportCodes(code, options.skillCode), options);
+}
+
+function commitMwoImport({ mech, build, selectedSkills }, {
   closeDialog = true,
   updateNavigation = true,
   historyTabId = null,
 } = {}) {
-  if (!globalThis.MWOCodec) throw new Error(t("loadout.codecUnavailable"));
-  const decoded = MWOCodec.decode(code);
-  const mech = mechById(decoded.chassisId);
-  if (!mech) throw new Error(t("loadout.invalidMech", { id: decoded.chassisId }));
-  if (decoded.isOmni !== hasFixedOmnipods(mech)) {
-    throw new Error(t("loadout.invalidMech", { id: decoded.chassisId }));
-  }
-  const build = buildFromMwoCode(decoded, mech);
   state.selectedItemId = null;
   if (state.activeMainTab !== "mechlab") setMainTab("mechlab");
   const historyTab = historyTabId
@@ -13638,6 +13774,7 @@ function importMwoCode(code, {
     mechlabFittingTargetMode(historyTabId && !historyTab ? "add" : "replace"),
   );
   if (!tab) throw new Error(t("mechlab.maxFittingTabs", { max: MAX_MECHLAB_FITTING_TABS }));
+  applyImportedSkills(selectedSkills);
   if (updateNavigation) updateMechNavigation("mech", mech.id, "push", tab.id);
   if (closeDialog) closeLoadoutCodeDialog();
   renderAll();
@@ -13771,12 +13908,14 @@ function analyzeMwoCode(code) {
   const previous = {
     selectedMech: state.selectedMech,
     currentBuild: state.currentBuild,
-    selectedSkillGroups: state.selectedSkillGroups,
+    selectedSkillNodes: state.selectedSkillNodes,
+    skillSelectionMode: state.skillSelectionMode,
   };
   try {
     state.selectedMech = mech;
     state.currentBuild = build;
-    state.selectedSkillGroups = new Set();
+    state.selectedSkillNodes = new Set();
+    state.skillSelectionMode = "custom";
     const calc = calculateBuild();
     const simulationWeapons = collectSimulationWeapons();
     const heatSink = simulationHeatSinkItem();
@@ -13845,7 +13984,8 @@ function analyzeMwoCode(code) {
   } finally {
     state.selectedMech = previous.selectedMech;
     state.currentBuild = previous.currentBuild;
-    state.selectedSkillGroups = previous.selectedSkillGroups;
+    state.selectedSkillNodes = previous.selectedSkillNodes;
+    state.skillSelectionMode = previous.skillSelectionMode;
   }
 }
 
@@ -14083,10 +14223,13 @@ globalThis.MwoLabCommunityBridge = Object.freeze({
 });
 
 function applyImportedMwoCode() {
+  setImportCodeErrors();
+  setLoadoutCodeStatus();
   try {
-    importMwoCode($("loadout-code-text").value);
+    importMwoCode($("loadout-code-text").value, { skillCode: $("skill-code-text").value });
   } catch (error) {
-    setLoadoutCodeStatus(error.message, "error");
+    setImportCodeErrors(error.fields);
+    setLoadoutCodeStatus(error.fields ? t("loadout.validationFailed") : error.message, "error");
   }
 }
 
@@ -14110,6 +14253,10 @@ async function copyLoadoutDialogValue(textarea, successMessage) {
 
 function copyExportedMwoCode() {
   return copyLoadoutDialogValue($("loadout-code-text"), t("loadout.copied"));
+}
+
+function copyExportedSkillCode() {
+  return copyLoadoutDialogValue($("skill-code-text"), t("loadout.skillCopied"));
 }
 
 function copyExportedMwoUrl() {
@@ -14317,45 +14464,64 @@ function toggleMechSpecialFeature(feature, requestedGroup = "") {
   renderMechList();
 }
 
+function skillEffectValueText(effect) {
+  const percent = effect.name.endsWith("_multiplier");
+  const value = Number((effect.value * (percent ? 100 : 1)).toFixed(4));
+  return `${value > 0 ? "+" : ""}${value}${percent ? "%" : ""}`;
+}
+
+function skillNodeDisplay(node) {
+  const failure = skillNodeRequirementFailure(node, state.selectedMech, state.currentBuild);
+  const effects = (node.effects || []).map(effect => ({
+    label: effect.display_name || effect.name,
+    value: resolvedSkillEffectValue(effect, state.selectedMech),
+    name: effect.name,
+  })).filter(effect => effect.value !== 0);
+  const values = [...new Set(effects.map(skillEffectValueText))];
+  return {
+    label: gameLocalizedText(`EMechTreeNode_${node.name}`) || node.name,
+    description: gameLocalizedText(`EMechTreeNode_${node.name}_desc`) || "",
+    available: !failure,
+    reason: failure ? t(failure) : "",
+    value: values.length === 1 ? values[0] : effects.length ? t("skills.effectCount", { count: effects.length }) : "0",
+    effects: effects.map(effect => `${effect.label}: ${skillEffectValueText(effect)}`),
+  };
+}
+
 function renderSkillControls() {
-  const groups = skillSelectionGroups();
-  const allSelected = groups.length > 0
-    && groups.every((group) => state.selectedSkillGroups.has(group.key));
-  const recommendedGroups = groups.filter((group) => (
-    RECOMMENDED_SKILL_GROUP_KEYS.includes(group.key)
-  ));
-  const recommendedSelected = recommendedGroups.length === RECOMMENDED_SKILL_GROUP_KEYS.length
-    && state.selectedSkillGroups.size === recommendedGroups.length
-    && recommendedGroups.every((group) => state.selectedSkillGroups.has(group.key));
-  const recommendedNodeCount = recommendedGroups.reduce(
-    (total, group) => total + group.nodes.length,
-    0,
-  );
-  $("skill-category-options").innerHTML = `
-    <button class="skill-category-all${allSelected ? " active" : ""}" type="button" data-skill-category-all aria-pressed="${allSelected}">
-      <span class="mech-filter-option-copy">
-        <strong>${t("skills.applyAll")}</strong>
-        <small class="skill-node-count">${t("skills.nodeCount", { count: state.skills.node_count || 0 })}</small>
-      </span>
-    </button>
-    <button class="skill-category-recommended${recommendedSelected ? " active" : ""}" type="button" data-skill-category-recommended aria-pressed="${recommendedSelected}">
-      <span class="mech-filter-option-copy">
-        <strong>${t("skills.applyRecommended")}</strong>
-        <small class="skill-node-count">${t("skills.nodeCount", { count: recommendedNodeCount })}</small>
-      </span>
-    </button>
-    ${groups.map((group) => {
-      const active = state.selectedSkillGroups.has(group.key);
-      return `
-        <button class="${active ? "active" : ""}" type="button" data-skill-group="${escapeHtml(group.key)}" aria-pressed="${active}">
-          <span class="mech-filter-option-copy">
-            <strong>${escapeHtml(t(group.labelKey))}</strong>
-            <small class="skill-node-count">${t("skills.nodeCount", { count: group.nodes.length })}</small>
-          </span>
-        </button>
-      `;
-    }).join("")}
-  `;
+  const host = $("skill-tree");
+  if (!host || !state.selectedMech || !state.currentBuild) return;
+  const graph = skillSelectionGraph();
+  if (!skillTreeView) skillTreeView = globalThis.MwoLabSkillTree.createView(host, graph, state.skills.categories, {
+    onNode: toggleSkillNode,
+    onGroup: toggleSkillNodeGroup,
+  });
+  document.querySelectorAll("[data-skill-mode]").forEach(button => {
+    const active = button.dataset.skillMode === state.skillSelectionMode;
+    button.setAttribute("aria-pressed", String(active));
+    button.classList.toggle("active", active);
+  });
+  const mech = state.selectedMech;
+  const tons = number(currentDefinition(mech).stats?.MaxTons);
+  const effects = selectedSkillEffects();
+  const durabilityNames = new Set(["increasedarmor_multiplier", "increasedstructure_multiplier"]);
+  const durabilityEffects = effects.filter(effect => durabilityNames.has(effect.name));
+  const otherEffects = effects.filter(effect => !durabilityNames.has(effect.name));
+  skillTreeView.update({
+    selected: state.selectedSkillNodes,
+    context: `${mech.display_name || mech.name} · ${mech.faction} · ${mech.weight_class} · ${tons} t`,
+    count: state.selectedSkillNodes.size,
+    countLabel: t("skills.allocated"),
+    effectsLabel: t("skills.selectedEffects"),
+    noEffects: t("skills.noEffects"),
+    effectsHtml: renderMechSummaryQuirkRows(durabilityEffects, false) + renderMechSummaryQuirkRows(otherEffects, false),
+    hasEffects: effects.length > 0,
+    hint: t("skills.treeHint"), fit: t("skills.fit"),
+    unavailable: t("skills.unavailable"), selectGroup: t("skills.selectGroup"),
+    categoryLabel: key => t(`skills.category.${key}`),
+    groupLabel: group => (gameLocalizedText(`EMechTreeNode_${group.ids[0]}`) || group.subcategory).replace(/\s+\d+$/, ""),
+    nodeInfo: id => skillNodeDisplay(graph.nodes.get(id)),
+  });
 }
 
 function refreshSelectedSkills() {
@@ -14365,47 +14531,58 @@ function refreshSelectedSkills() {
   renderSkillControls();
 }
 
-function toggleSkillGroup(groupKey) {
-  if (!skillSelectionGroups().some((group) => group.key === groupKey)) return;
-  if (state.selectedSkillGroups.has(groupKey)) {
-    state.selectedSkillGroups.delete(groupKey);
-  } else {
-    state.selectedSkillGroups.add(groupKey);
-  }
+function toggleSkillNode(name) {
+  const graph = skillSelectionGraph();
+  if (!graph.nodes.has(name)) return;
+  state.selectedSkillNodes = graph.toggle(state.selectedSkillNodes, name);
+  state.skillSelectionMode = "custom";
   refreshSelectedSkills();
 }
 
-function toggleAllSkillGroups() {
-  const groups = skillSelectionGroups();
-  const allSelected = groups.length > 0
-    && groups.every((group) => state.selectedSkillGroups.has(group.key));
-  state.selectedSkillGroups.clear();
-  if (!allSelected) groups.forEach((group) => state.selectedSkillGroups.add(group.key));
+function toggleSkillNodeGroup(key, enabled) {
+  const graph = skillSelectionGraph();
+  if (!graph.groups.has(key)) return;
+  state.selectedSkillNodes = graph.toggleGroup(state.selectedSkillNodes, key, enabled);
+  state.skillSelectionMode = "custom";
   refreshSelectedSkills();
 }
 
-function applyRecommendedSkillGroups() {
-  const availableKeys = new Set(skillSelectionGroups().map((group) => group.key));
-  state.selectedSkillGroups.clear();
-  RECOMMENDED_SKILL_GROUP_KEYS.forEach((groupKey) => {
-    if (availableKeys.has(groupKey)) state.selectedSkillGroups.add(groupKey);
-  });
+function setSkillSelectionMode(mode) {
+  if (!["all", "mechlab", "custom", "none"].includes(mode)) return;
+  state.selectedSkillNodes = skillSelectionGraph().preset(mode, state.selectedSkillNodes);
+  state.skillSelectionMode = mode;
   refreshSelectedSkills();
 }
 
 function openSkillDialog() {
   if (!state.selectedMech || !state.currentBuild) return;
+  if ($("skill-overlay").hidden) {
+    skillDialogSnapshot = {
+      nodes: new Set(state.selectedSkillNodes),
+      mode: state.skillSelectionMode,
+    };
+  }
   renderSkillControls();
   $("skill-overlay").hidden = false;
   document.body.classList.add("skill-open");
   requestAnimationFrame(() => {
-    $("skill-category-options").querySelector("button")?.focus();
+    skillTreeView?.fit();
+    $("skill-overlay").querySelector(`[data-skill-mode="${state.skillSelectionMode}"]`)?.focus();
   });
 }
 
-function closeSkillDialog() {
+function revertSkillSelection() {
+  if (!skillDialogSnapshot) return;
+  state.selectedSkillNodes = new Set(skillDialogSnapshot.nodes);
+  state.skillSelectionMode = skillDialogSnapshot.mode;
+  refreshSelectedSkills();
+}
+
+function closeSkillDialog({ apply = false } = {}) {
   if ($("skill-overlay").hidden) return;
+  if (!apply) revertSkillSelection();
   $("skill-overlay").hidden = true;
+  skillDialogSnapshot = null;
   document.body.classList.remove("skill-open");
   $("open-skills")?.focus();
 }
@@ -16345,7 +16522,12 @@ function bindEvents() {
   $("close-loadout-code").addEventListener("click", closeLoadoutCodeDialog);
   $("close-loadout-code-mobile").addEventListener("click", closeLoadoutCodeDialog);
   $("apply-loadout-code").addEventListener("click", applyImportedMwoCode);
+  $("share-skills").addEventListener("change", updateExportedSkillUrl);
+  for (const id of ["loadout-code-text", "skill-code-text"]) $(id).addEventListener("input", () => {
+    setImportCodeErrors(); setLoadoutCodeStatus();
+  });
   $("copy-loadout-code").addEventListener("click", copyExportedMwoCode);
+  $("copy-skill-code").addEventListener("click", copyExportedSkillCode);
   $("copy-loadout-url").addEventListener("click", copyExportedMwoUrl);
   $("loadout-code-overlay").addEventListener("mousedown", (event) => {
     if (event.target === $("loadout-code-overlay")) closeLoadoutCodeDialog();
@@ -16899,24 +17081,12 @@ function bindEvents() {
   $("ui-settings-overlay").addEventListener("click", (event) => {
     if (event.target === event.currentTarget) closeUiSettingsDialog();
   });
-  $("close-skill-x").addEventListener("click", closeSkillDialog);
-  $("close-skill").addEventListener("click", closeSkillDialog);
+  $("revert-skills").addEventListener("click", revertSkillSelection);
+  $("close-skill-x").addEventListener("click", () => closeSkillDialog());
+  $("close-skill").addEventListener("click", () => closeSkillDialog({ apply: true }));
   $("skill-overlay").addEventListener("click", (event) => {
-    const all = event.target.closest("[data-skill-category-all]");
-    if (all) {
-      toggleAllSkillGroups();
-      return;
-    }
-    const recommended = event.target.closest("[data-skill-category-recommended]");
-    if (recommended) {
-      applyRecommendedSkillGroups();
-      return;
-    }
-    const group = event.target.closest("[data-skill-group]");
-    if (group) {
-      toggleSkillGroup(group.dataset.skillGroup);
-      return;
-    }
+    const mode = event.target.closest("[data-skill-mode]");
+    if (mode) { setSkillSelectionMode(mode.dataset.skillMode); return; }
     if (event.target === event.currentTarget) closeSkillDialog();
   });
   document.querySelectorAll('[name="quirk-value-display"]').forEach((input) => {
@@ -17665,6 +17835,26 @@ globalThis.MwoLabMobileBridge = Object.freeze({
 if (globalThis.__MWOLAB_TEST__) {
   globalThis.__MWOLAB_TEST_API__ = Object.freeze({
     state,
+    skillSelectionGraph,
+    validateImportCodes,
+    skillExportResult,
+    importMwoCode,
+    applyImportedSkills,
+    skillEffectsForNodes,
+    selectedSkillEffects,
+    resolvedSkillEffectValue,
+    skillNodeRequirementsMet,
+    skillNodeRequirementFailure,
+    mechlabQuirkValues,
+    setSkillSelectionMode,
+    toggleSkillNode,
+    toggleSkillNodeGroup,
+    renderSkillControls,
+    openSkillDialog,
+    closeSkillDialog,
+    revertSkillSelection,
+    analyzeMwoCode,
+    buildAsMwoLoadout,
     changeLanguage,
     languageUrl,
     MAX_MECHLAB_FITTING_TABS,
@@ -17857,6 +18047,7 @@ if (globalThis.__MWOLAB_TEST__) {
     removeInstalledEngineHeatSink,
     replaceOmnipod,
     sharedLoadoutUrl,
+    mechNavigationUrl,
     decodeSharedLoadoutValue,
     replaceSharedLoadoutNavigation,
     publicFittingUrl,

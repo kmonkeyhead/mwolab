@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MWO Skill Tree</title>
+  <link rel="icon" href="favicon.ico" />
+  <script src="skill-map.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <link rel="stylesheet" href="base.css" />
+  <link rel="stylesheet" href="hexagon.css" />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&icon_names=border_clear,content_copy,input,publish,settings,share,table_eye,warning" />
+  <script>if ('UA-99571414-1' && 'UA-99571414-1' != ('##' + 'ANALYTICS_ID' + '##')) { (function (i, s, o, g, r, a, m) { i['GoogleAnalyticsObject'] = r; i[r] = i[r] || function () { (i[r].q = i[r].q || []).push(arguments) }, i[r].l = 1 * new Date(); a = s.createElement(o), m = s.getElementsByTagName(o)[0]; a.async = 1; a.src = g; m.parentNode.insertBefore(a, m) })(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga'); ga('create', 'UA-99571414-1', 'auto'); ga('send', 'pageview'); }</script>
+</head>
+
+<body x-data="app()" x-on:hashchange.window="reloadSelectedNodes()">
+  <div class="navigation">
+    <div class="title">MWO Skills Tree</div>
+    <div class="spacer"></div>
+    <button class="material-symbols-outlined" title="show/hide unselected categories"
+      x-bind:disabled="selectedCount == 0" x-bind:class="hideUnselected && 'active'"
+      x-on:click="hideUnselected = !hideUnselected">table_eye</button>
+    <div class="thin-spacer"></div>
+    <div class="thin-spacer"></div>
+    <div class="material-symbols-outlined tree-warning" x-bind:class="selectedInvalid && 'active'"
+      title="lit when skill tree is invalid">warning</div>
+    <button class="counter" style="width: 3ex; text-align: center" x-text="selectedCount" title="count of active nodes" popovertarget="summaryDialog"></button>
+    <div class="thin-spacer"></div>
+    <button class="material-symbols-outlined" title="clear all selections"
+      x-on:click="clearSelectedNodes()">border_clear</button>
+    <div class="thin-spacer"></div>
+    <button class="material-symbols-outlined" title="show import/export dialog"
+      popovertarget="publishDialog">publish</button>
+    <button class="material-symbols-outlined" title="show settings/info dialog"
+      popovertarget="settingDialog">settings</button>
+  </div>
+
+  <dialog id="publishDialog" popover x-on:beforetoggle="resetPublishDialog()">
+    <h3>Import / Export</h3>
+    <p>Here you can import or export a MWOCODE.</p>
+    <div style="display: flex; flex: row; gap: 4px;">
+      <input type="text" style="flex-grow: 1;" x-model="publish.mwocode" x-on:change="publish.modified = true" />
+      <button class="material-symbols-outlined" title="load MWOCODE" popovertarget="publishDialog"
+        popovertargetaction="hide" x-on:click="window.location = urlize(publish.mwocode)"
+        x-bind:disabled="!publish.modified || !MwoSkillImporter.check(publish.mwocode)">input</button>
+      <button class="material-symbols-outlined" title="copy MWOCODE to clipboard"
+        x-on:click="copyToClipboard(publish.mwocode)" x-bind:disabled="publish.modified">content_copy</button>
+      <button class="material-symbols-outlined" title="copy site link to clipboard"
+        x-on:click="copyToClipboard(urlize(publish.mwocode))" x-bind:disabled="publish.modified">share</button>
+    </div>
+  </dialog>
+
+  <dialog id="settingDialog" popover>
+    <h3>Settings</h3>
+    <p>Some cosmetic settings for the site.</p>
+    <div style="display: flex; flex-direction: column; gap: 5px;">
+      <div><input type="checkbox" id="masonry-mode" x-model="modeMasonry" /><label for="masonry-mode">masonry
+          mode</label>
+        <span>&mdash; tile skill trees to reduce space (experimental)</span>
+      </div>
+      <div><input type="checkbox" id="tiny-mode" x-model="modeTiny" /><label for="tiny-mode">tiny mode</label>
+        <span>&mdash; reduce render size of skill trees</span>
+      </div>
+      <div><input type="checkbox" id="no-wrap" x-model="modeNoWrap" /><label for="no-wrap">no wrap</label>
+        <span>&mdash; show skill trees horizontally</span>
+      </div>
+    </div>
+    <h3>About</h3>
+    <p>Welcome to the new MWO Skill Tree/Grid tool, to help plan out and share skill point allocations.</p>
+    <p>MWO revamped its skill system in late-2022. If you're looking for the older Skill Tree, visit
+      <a href="https://kitlaan.github.io/mwoskill/">mwoskill</a>.
+    </p>
+    <ul>
+      <li><a href="https://gitlab.com/kitlaan/mwoskill2">source code @gitlab</a></li>
+      <li><a href="https://www.reddit.com/message/compose/?to=kitlaan&subject=mwoskill2">reddit</a></li>
+    </ul>
+    <p style="font-size: smaller; font-style: italic;">MWOSkill2 was created for non-commercial purposes, referencing
+      assets from MechWarrior Online.
+      This tool is not endorsed by nor reflects the views or opinions of Piranha Games Inc. and no employee
+      of Piranha Games Inc. was involved in the making of it.</p>
+  </dialog>
+
+  <dialog id="summaryDialog" popover>
+    <h3>Summary of Nodes</h3>
+    <pre style="margin: 1rem 20px" x-text="summaryMarkdown || '(none)'">
+    </pre>
+  </dialog>
+
+  <div x-ref="root" class="root" style="visibility: hidden" x-on:click="toggleSelectedNode"
+    x-bind:class="{ 'masonry': modeMasonry, 'flexbox': !modeMasonry, 'tiny': modeTiny, 'wide': modeNoWrap, 'hide-unselected': selectedCount > 0 && hideUnselected }">
+
+    <!-- FIREPOWER -->
+    <div class="section" id="firepower">
+      <div class="name">Firepower</div>
+      <div class="container">
+        <!-- FIREPOWER: COOLDOWN -->
+        <div class="category" id="cooldown">
+          <div class="name"><span>Cooldown</span></div>
+          <div class="container">
+            <div class="node" id="cooldown_01">
+              <div class="label">Cooldown</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="cooldown_02" parent="cooldown_01">
+              <div class="label">Cooldown</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="cooldown_03" parent="cooldown_02">
+              <div class="label">Cooldown</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="cooldown_04" parent="cooldown_03">
+              <div class="label">Cooldown</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="cooldown_05" parent="cooldown_04">
+              <div class="label">Cooldown</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="cooldown_06" parent="cooldown_05">
+              <div class="label">Cooldown</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="cooldown_07" parent="cooldown_06">
+              <div class="label">Cooldown</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="cooldown_08" parent="cooldown_07">
+              <div class="label">Cooldown</div>
+              <div class="enum">8</div>
+            </div>
+            <div class="node" id="cooldown_09" parent="cooldown_08">
+              <div class="label">Cooldown</div>
+              <div class="enum">9</div>
+            </div>
+            <div class="node" id="cooldown_10" parent="cooldown_09">
+              <div class="label">Cooldown</div>
+              <div class="enum">10</div>
+            </div>
+            <div class="node" id="cooldown_11" parent="cooldown_10">
+              <div class="label">Cooldown</div>
+              <div class="enum">11</div>
+            </div>
+            <div class="node" id="cooldown_12" parent="cooldown_11">
+              <div class="label">Cooldown</div>
+              <div class="enum">12</div>
+            </div>
+            <div class="node" id="cooldown_13" parent="cooldown_12">
+              <div class="label">Cooldown</div>
+              <div class="enum">13</div>
+            </div>
+            <div class="node" id="cooldown_14" parent="cooldown_13">
+              <div class="label">Cooldown</div>
+              <div class="enum">14</div>
+            </div>
+            <div class="node" id="cooldown_15" parent="cooldown_14">
+              <div class="label">Cooldown</div>
+              <div class="enum">15</div>
+            </div>
+            <div class="node" id="cooldown_16" parent="cooldown_15">
+              <div class="label">Cooldown</div>
+              <div class="enum">16</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: RANGE -->
+        <div class="category" id="range">
+          <div class="name"><span>Range</span></div>
+          <div class="container">
+            <div class="node" id="range_01">
+              <div class="label">Range</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="range_02" parent="range_01">
+              <div class="label">Range</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="range_03" parent="range_02">
+              <div class="label">Range</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="range_04" parent="range_03">
+              <div class="label">Range</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="range_05" parent="range_04">
+              <div class="label">Range</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="range_06" parent="range_05">
+              <div class="label">Range</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="range_07" parent="range_06">
+              <div class="label">Range</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="range_08" parent="range_07">
+              <div class="label">Range</div>
+              <div class="enum">8</div>
+            </div>
+            <div class="node" id="range_09" parent="range_08">
+              <div class="label">Range</div>
+              <div class="enum">9</div>
+            </div>
+            <div class="node" id="range_10" parent="range_09">
+              <div class="label">Range</div>
+              <div class="enum">10</div>
+            </div>
+            <div class="node" id="range_11" parent="range_10">
+              <div class="label">Range</div>
+              <div class="enum">11</div>
+            </div>
+            <div class="node" id="range_12" parent="range_11">
+              <div class="label">Range</div>
+              <div class="enum">12</div>
+            </div>
+            <div class="node" id="range_13" parent="range_12">
+              <div class="label">Range</div>
+              <div class="enum">13</div>
+            </div>
+            <div class="node" id="range_14" parent="range_13">
+              <div class="label">Range</div>
+              <div class="enum">14</div>
+            </div>
+            <div class="node" id="range_15" parent="range_14">
+              <div class="label">Range</div>
+              <div class="enum">15</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: HEAT GEN -->
+        <div class="category" id="heat-gen">
+          <div class="name"><span>Heat Gen</span></div>
+          <div class="container">
+            <div class="node" id="heat-gen_01">
+              <div class="label">Heat Gen</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="heat-gen_02" parent="heat-gen_01">
+              <div class="label">Heat Gen</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="heat-gen_03" parent="heat-gen_02">
+              <div class="label">Heat Gen</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="heat-gen_04" parent="heat-gen_03">
+              <div class="label">Heat Gen</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="heat-gen_05" parent="heat-gen_04">
+              <div class="label">Heat Gen</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="heat-gen_06" parent="heat-gen_05">
+              <div class="label">Heat Gen</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="heat-gen_07" parent="heat-gen_06">
+              <div class="label">Heat Gen</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="heat-gen_08" parent="heat-gen_07">
+              <div class="label">Heat Gen</div>
+              <div class="enum">8</div>
+            </div>
+            <div class="node" id="heat-gen_09" parent="heat-gen_08">
+              <div class="label">Heat Gen</div>
+              <div class="enum">9</div>
+            </div>
+            <div class="node" id="heat-gen_10" parent="heat-gen_09">
+              <div class="label">Heat Gen</div>
+              <div class="enum">10</div>
+            </div>
+            <div class="node" id="heat-gen_11" parent="heat-gen_10">
+              <div class="label">Heat Gen</div>
+              <div class="enum">11</div>
+            </div>
+            <div class="node" id="heat-gen_12" parent="heat-gen_11">
+              <div class="label">Heat Gen</div>
+              <div class="enum">12</div>
+            </div>
+            <div class="node" id="heat-gen_13" parent="heat-gen_12">
+              <div class="label">Heat Gen</div>
+              <div class="enum">13</div>
+            </div>
+            <div class="node" id="heat-gen_14" parent="heat-gen_13">
+              <div class="label">Heat Gen</div>
+              <div class="enum">14</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: VELOCITY -->
+        <div class="category" id="velocity">
+          <div class="name"><span>Velocity</span></div>
+          <div class="container">
+            <div class="node" id="velocity_01">
+              <div class="label">Velocity</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="velocity_02" parent="velocity_01">
+              <div class="label">Velocity</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="velocity_03" parent="velocity_02">
+              <div class="label">Velocity</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="velocity_04" parent="velocity_03">
+              <div class="label">Velocity</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="velocity_05" parent="velocity_04">
+              <div class="label">Velocity</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: LASER DURATION -->
+        <div class="category" id="laser-duration">
+          <div class="name"><span>Laser Duration</span></div>
+          <div class="container hexagon-laser">
+            <div class="node" id="laser-duration_01">
+              <div class="label">Laser Duration</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="laser-duration_02" parent="laser-duration_01">
+              <div class="label">Laser Duration</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="laser-duration_03" parent="laser-duration_02">
+              <div class="label">Laser Duration</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="laser-duration_04" parent="laser-duration_03">
+              <div class="label">Laser Duration</div>
+              <div class="enum">4</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: THERMAL CYCLING -->
+        <div class="category" id="thermal-cycling">
+          <div class="name"><span>Thermal Cycling</span></div>
+          <div class="container hexagon-laser">
+            <div class="node" id="thermal-cycling_01">
+              <div class="label">Thermal Cycling</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="thermal-cycling_02" parent="thermal-cycling_01">
+              <div class="label">Thermal Cycling</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: MAGAZINE CAPACITY -->
+        <div class="category" id="magazine-capacity">
+          <div class="name"><span>Magazine Capacity</span></div>
+          <div class="container hexagon-ballistic">
+            <div class="node" id="magazine-capacity_01">
+              <div class="label">Magazine Capacity</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="magazine-capacity_02" parent="magazine-capacity_01">
+              <div class="label">Magazine Capacity</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: LBX SPREAD -->
+        <div class="category" id="lbx-spread">
+          <div class="name"><span>LBX Spread</span></div>
+          <div class="container hexagon-ballistic">
+            <div class="node" id="lbx-spread_01">
+              <div class="label">LBX Spread</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="lbx-spread_02" parent="lbx-spread_01">
+              <div class="label">LBX Spread</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: GAUSS CHARGE -->
+        <div class="category" id="gauss-charge">
+          <div class="name"><span>Gauss Charge</span></div>
+          <div class="container hexagon-ballistic">
+            <div class="node" id="gauss-charge_01">
+              <div class="label">Gauss Charge</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="gauss-charge_02" parent="gauss-charge_01">
+              <div class="label">Gauss Charge</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: UAC/RAC JAM DURATION -->
+        <div class="category" id="uac-rac-jam-duration">
+          <div class="name"><span>UAC/RAC Jam Duration</span></div>
+          <div class="container hexagon-ballistic">
+            <div class="node" id="enhanced-uac-rac_01">
+              <div class="label">Enhanced UAC/RAC</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="enhanced-uac-rac_02" parent="enhanced-uac-rac_01">
+              <div class="label">Enhanced UAC/RAC</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: MISSILE RACK -->
+        <div class="category" id="missile-rack">
+          <div class="name"><span>Missile Rack</span></div>
+          <div class="container hexagon-missile">
+            <div class="node" id="missile-rack_01">
+              <div class="label">Missile Rack</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="missile-rack_02" parent="missile-rack_01">
+              <div class="label">Missile Rack</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: MISSILE SPREAD -->
+        <div class="category" id="missile-spread">
+          <div class="name"><span>Missile Spread</span></div>
+          <div class="container hexagon-missile">
+            <div class="node" id="missile-spread_01">
+              <div class="label">Missile Spread</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="missile-spread_02" parent="missile-spread_01">
+              <div class="label">Missile Spread</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FIREPOWER: HIGH EXPLOSIVE -->
+        <div class="category" id="high-explosive">
+          <div class="name"><span>High Explosive</span></div>
+          <div class="container hexagon-missile">
+            <div class="node" id="high-explosive_01">
+              <div class="label">High Explosive</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="high-explosive_02" parent="high-explosive_01">
+              <div class="label">High Explosive</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SURVIVAL -->
+    <div class="section" id="survival">
+      <div class="name">Survival</div>
+      <div class="container">
+        <!-- SURVIVAL: SKELETAL DENSITY -->
+        <div class="category" id="skeletal-density">
+          <div class="name"><span>Skeletal Density</span></div>
+          <div class="container">
+            <div class="node" id="skeletal-density_01">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="skeletal-density_02" parent="skeletal-density_01">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="skeletal-density_03" parent="skeletal-density_02">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="skeletal-density_04" parent="skeletal-density_03">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="skeletal-density_05" parent="skeletal-density_04">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="skeletal-density_06" parent="skeletal-density_05">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="skeletal-density_07" parent="skeletal-density_06">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="skeletal-density_08" parent="skeletal-density_07">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">8</div>
+            </div>
+            <div class="node" id="skeletal-density_09" parent="skeletal-density_08">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">9</div>
+            </div>
+            <div class="node" id="skeletal-density_10" parent="skeletal-density_09">
+              <div class="label">Skeletal Density</div>
+              <div class="enum">10</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SURVIVAL: ARMOR HARDENING -->
+        <div class="category" id="armor-hardening">
+          <div class="name"><span>Armor Hardening</span></div>
+          <div class="container">
+            <div class="node" id="armor-hardening_01">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="armor-hardening_02" parent="armor-hardening_01">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="armor-hardening_03" parent="armor-hardening_02">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="armor-hardening_04" parent="armor-hardening_03">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="armor-hardening_05" parent="armor-hardening_04">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="armor-hardening_06" parent="armor-hardening_05">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="armor-hardening_07" parent="armor-hardening_06">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="armor-hardening_08" parent="armor-hardening_07">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">8</div>
+            </div>
+            <div class="node" id="armor-hardening_09" parent="armor-hardening_08">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">9</div>
+            </div>
+            <div class="node" id="armor-hardening_10" parent="armor-hardening_09">
+              <div class="label">Armor Hardening</div>
+              <div class="enum">10</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SURVIVAL: REINFORCED CASING -->
+        <div class="category" id="reinforced-casing">
+          <div class="name"><span>Reinforced Casing</span></div>
+          <div class="container">
+            <div class="node" id="reinforced-casing_01">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="reinforced-casing_02" parent="reinforced-casing_01">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="reinforced-casing_03" parent="reinforced-casing_02">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="reinforced-casing_04" parent="reinforced-casing_03">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="reinforced-casing_05" parent="reinforced-casing_04">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="reinforced-casing_06" parent="reinforced-casing_05">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="reinforced-casing_07" parent="reinforced-casing_06">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node" id="reinforced-casing_08" parent="reinforced-casing_07">
+              <div class="label">Reinforced Casing</div>
+              <div class="enum">8</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SURVIVAL: OVERHEAT DAMAGE -->
+        <div class="category" id="overheat-damage">
+          <div class="name"><span>Overheat Damage</span></div>
+          <div class="container">
+            <div class="node" id="overheat-damage_01">
+              <div class="label">Overheat Damage</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="overheat-damage_02" parent="overheat-damage_01">
+              <div class="label">Overheat Damage</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="overheat-damage_03" parent="overheat-damage_02">
+              <div class="label">Overheat Damage</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="overheat-damage_04" parent="overheat-damage_03">
+              <div class="label">Overheat Damage</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="overheat-damage_05" parent="overheat-damage_04">
+              <div class="label">Overheat Damage</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SURVIVAL: AMS OVERLOAD -->
+        <div class="category" id="ams-overload">
+          <div class="name"><span>AMS Overload</span></div>
+          <div class="container hexagon-ams">
+            <div class="node" id="ams-overload_01">
+              <div class="label">AMS Overload</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="ams-overload_02" parent="ams-overload_01">
+              <div class="label">AMS Overload</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILITY -->
+    <div class="section" id="mobility">
+      <div class="name">Mobility</div>
+      <div class="container">
+        <!-- MOBILITY: KINETIC BURST / SPEED TWEAK -->
+        <div class="category" id="kinetic-burst">
+          <div class="name"><span>Kinetic Burst</span></div>
+          <div class="container">
+            <div class="node" id="kinetic-burst_01">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="kinetic-burst_02" parent="kinetic-burst_01">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="kinetic-burst_03" parent="kinetic-burst_02">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="kinetic-burst_04" parent="kinetic-burst_03">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="kinetic-burst_05" parent="kinetic-burst_04">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="kinetic-burst_06" parent="kinetic-burst_05">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="kinetic-burst_07" parent="kinetic-burst_06">
+              <div class="label">Kinetic Burst</div>
+              <div class="enum">7</div>
+            </div>
+            <div class="node hexagon-speed" id="speed-tweak_01" parent="kinetic-burst_04">
+              <div class="label">Speed Tweak</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node hexagon-speed" id="speed-tweak_02" parent="kinetic-burst_05">
+              <div class="label">Speed Tweak</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node hexagon-speed" id="speed-tweak_03" parent="kinetic-burst_06">
+              <div class="label">Speed Tweak</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node hexagon-speed" id="speed-tweak_04" parent="kinetic-burst_07">
+              <div class="label">Speed Tweak</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node hexagon-speed" id="speed-tweak_05" parent="kinetic-burst_07">
+              <div class="label">Speed Tweak</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MOBILITY: HARD BRAKE -->
+        <div class="category" id="hard-brake">
+          <div class="name"><span>Hard Brake</span></div>
+          <div class="container">
+            <div class="node" id="hard-brake_01">
+              <div class="label">Hard Brake</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="hard-brake_02" parent="hard-brake_01">
+              <div class="label">Hard Brake</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="hard-brake_03" parent="hard-brake_02">
+              <div class="label">Hard Brake</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="hard-brake_04" parent="hard-brake_03">
+              <div class="label">Hard Brake</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="hard-brake_05" parent="hard-brake_04">
+              <div class="label">Hard Brake</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="hard-brake_06" parent="hard-brake_05">
+              <div class="label">Hard Brake</div>
+              <div class="enum">6</div>
+            </div>
+            <div class="node" id="hard-brake_07" parent="hard-brake_06">
+              <div class="label">Hard Brake</div>
+              <div class="enum">7</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MOBILITY: ANCHOR TURN -->
+        <div class="category" id="anchor-turn">
+          <div class="name"><span>Anchor Turn</span></div>
+          <div class="container">
+            <div class="node" id="anchor-turn_01">
+              <div class="label">Anchor Turn</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="anchor-turn_02" parent="anchor-turn_01">
+              <div class="label">Anchor Turn</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="anchor-turn_03" parent="anchor-turn_02">
+              <div class="label">Anchor Turn</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="anchor-turn_04" parent="anchor-turn_03">
+              <div class="label">Anchor Turn</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="anchor-turn_05" parent="anchor-turn_04">
+              <div class="label">Anchor Turn</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MOBILITY: TORSO SPEED -->
+        <div class="category" id="torso-speed">
+          <div class="name"><span>Torso Speed</span></div>
+          <div class="container">
+            <div class="node" id="torso-speed_01">
+              <div class="label">Torso Speed</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="torso-speed_02" parent="torso-speed_01">
+              <div class="label">Torso Speed</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="torso-speed_03" parent="torso-speed_02">
+              <div class="label">Torso Speed</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="torso-speed_04" parent="torso-speed_03">
+              <div class="label">Torso Speed</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="torso-speed_05" parent="torso-speed_04">
+              <div class="label">Torso Speed</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node" id="torso-speed_06" parent="torso-speed_05">
+              <div class="label">Torso Speed</div>
+              <div class="enum">6</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MOBILITY: TORSO YAW -->
+        <div class="category" id="torso-yaw">
+          <div class="name"><span>Torso Yaw</span></div>
+          <div class="container">
+            <div class="node" id="torso-yaw_01">
+              <div class="label">Torso Yaw</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="torso-yaw_02" parent="torso-yaw_01">
+              <div class="label">Torso Yaw</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="torso-yaw_03" parent="torso-yaw_02">
+              <div class="label">Torso Yaw</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="torso-yaw_04" parent="torso-yaw_03">
+              <div class="label">Torso Yaw</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="torso-yaw_05" parent="torso-yaw_04">
+              <div class="label">Torso Yaw</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MOBILITY: TORSO PITCH -->
+        <div class="category" id="torso-pitch">
+          <div class="name"><span>Torso Pitch</span></div>
+          <div class="container">
+            <div class="node" id="torso-pitch_01">
+              <div class="label">Torso Pitch</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="torso-pitch_02" parent="torso-pitch_01">
+              <div class="label">Torso Pitch</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="torso-pitch_03" parent="torso-pitch_02">
+              <div class="label">Torso Pitch</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="torso-pitch_04" parent="torso-pitch_03">
+              <div class="label">Torso Pitch</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="torso-pitch_05" parent="torso-pitch_04">
+              <div class="label">Torso Pitch</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- JUMP JETS -->
+    <div class="section" id="jump-jets">
+      <div class="name">Jump Jets</div>
+      <div class="container">
+        <!-- JUMP JETS: LIFT SPEED -->
+        <div class="category" id="lift-speed">
+          <div class="name"><span>Lift Speed</span></div>
+          <div class="container">
+            <div class="node" id="lift-speed_01">
+              <div class="label">Lift Speed</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="lift-speed_02" parent="lift-speed_01">
+              <div class="label">Lift Speed</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="lift-speed_03" parent="lift-speed_02">
+              <div class="label">Lift Speed</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="lift-speed_04" parent="lift-speed_03">
+              <div class="label">Lift Speed</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="lift-speed_05" parent="lift-speed_04">
+              <div class="label">Lift Speed</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JUMP JETS: SHOCK ABSORBANCE -->
+        <div class="category" id="shock-absorbance">
+          <div class="name"><span>Shock Absorbance</span></div>
+          <div class="container">
+            <div class="node" id="shock-absorbance_01">
+              <div class="label">Shock Absorbance</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="shock-absorbance_02" parent="shock-absorbance_01">
+              <div class="label">Shock Absorbance</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="shock-absorbance_03" parent="shock-absorbance_02">
+              <div class="label">Shock Absorbance</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="shock-absorbance_04" parent="shock-absorbance_03">
+              <div class="label">Shock Absorbance</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="shock-absorbance_05" parent="shock-absorbance_04">
+              <div class="label">Shock Absorbance</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JUMP JETS: VENT CALIBRATION -->
+        <div class="category" id="vent-calibration">
+          <div class="name"><span>Vent Calibration</span></div>
+          <div class="container">
+            <div class="node" id="vent-calibration_01">
+              <div class="label">Vent Calibration</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="vent-calibration_02" parent="vent-calibration_01">
+              <div class="label">Vent Calibration</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="vent-calibration_03" parent="vent-calibration_02">
+              <div class="label">Vent Calibration</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="vent-calibration_04" parent="vent-calibration_03">
+              <div class="label">Vent Calibration</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="vent-calibration_05" parent="vent-calibration_04">
+              <div class="label">Vent Calibration</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JUMP JETS: HEAT SHIELDING -->
+        <div class="category" id="heat-shielding">
+          <div class="name"><span>Heat Shielding</span></div>
+          <div class="container">
+            <div class="node" id="heat-shielding_01">
+              <div class="label">Heat Shielding</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="heat-shielding_02" parent="heat-shielding_01">
+              <div class="label">Heat Shielding</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="heat-shielding_03" parent="heat-shielding_02">
+              <div class="label">Heat Shielding</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="heat-shielding_04" parent="heat-shielding_03">
+              <div class="label">Heat Shielding</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="heat-shielding_05" parent="heat-shielding_04">
+              <div class="label">Heat Shielding</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPERATIONS -->
+    <div class="section" id="operations">
+      <div class="name">Operations</div>
+      <div class="container">
+        <div class="category" id="quick-ignition">
+          <!-- OPERATIONS: QUICK IGNITION -->
+          <div class="name"><span>Quick Ignition</span></div>
+          <div class="container">
+            <div class="node" id="quick-ignition_01">
+              <div class="label">Quick Ignition</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="quick-ignition_02" parent="quick-ignition_01">
+              <div class="label">Quick Ignition</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="quick-ignition_03" parent="quick-ignition_02">
+              <div class="label">Quick Ignition</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="quick-ignition_04" parent="quick-ignition_03">
+              <div class="label">Quick Ignition</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="quick-ignition_05" parent="quick-ignition_04">
+              <div class="label">Quick Ignition</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPERATIONS: COOL RUN -->
+        <div class="category" id="cool-run">
+          <div class="name"><span>Cool Run</span></div>
+          <div class="container">
+            <div class="node" id="cool-run_01">
+              <div class="label">Cool Run</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="cool-run_02" parent="cool-run_01">
+              <div class="label">Cool Run</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="cool-run_03" parent="cool-run_02">
+              <div class="label">Cool Run</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="cool-run_04" parent="cool-run_03">
+              <div class="label">Cool Run</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="cool-run_05" parent="cool-run_04">
+              <div class="label">Cool Run</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPERATIONS: HEAT CONTAINMENT -->
+        <div class="category" id="heat-containment">
+          <div class="name"><span>Heat Containment</span></div>
+          <div class="container">
+            <div class="node" id="heat-containment_01">
+              <div class="label">Heat Containment</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="heat-containment_02" parent="heat-containment_01">
+              <div class="label">Heat Containment</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="heat-containment_03" parent="heat-containment_02">
+              <div class="label">Heat Containment</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="heat-containment_04" parent="heat-containment_03">
+              <div class="label">Heat Containment</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="heat-containment_05" parent="heat-containment_04">
+              <div class="label">Heat Containment</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPERATIONS: IMPROVED GYROS -->
+        <div class="category" id="improved-gyros">
+          <div class="name"><span>Improved Gyros</span></div>
+          <div class="container">
+            <div class="node" id="improved-gyros_01">
+              <div class="label">Improved Gyros</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="improved-gyros_02" parent="improved-gyros_01">
+              <div class="label">Improved Gyros</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="improved-gyros_03" parent="improved-gyros_02">
+              <div class="label">Improved Gyros</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="improved-gyros_04" parent="improved-gyros_03">
+              <div class="label">Improved Gyros</div>
+              <div class="enum">4</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPERATIONS: SPEED RETENTION -->
+        <div class="category" id="speed-retention">
+          <div class="name"><span>Speed Retention</span></div>
+          <div class="container">
+            <div class="node" id="speed-retention_01">
+              <div class="label">Speed Retention</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="speed-retention_02" parent="speed-retention_01">
+              <div class="label">Speed Retention</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="speed-retention_03" parent="speed-retention_02">
+              <div class="label">Speed Retention</div>
+              <div class="enum">3</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OPERATIONS: HILL CLIMB -->
+        <div class="category" id="hill-climb">
+          <div class="name"><span>Hill Climb</span></div>
+          <div class="container">
+            <div class="node" id="hill-climb_01">
+              <div class="label">Hill Climb</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="hill-climb_02" parent="hill-climb_01">
+              <div class="label">Hill Climb</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="hill-climb_03" parent="hill-climb_02">
+              <div class="label">Hill Climb</div>
+              <div class="enum">3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SENSORS -->
+    <div class="section" id="sensors">
+      <div class="name">Sensors</div>
+      <div class="container">
+        <!-- SENSORS: TARGET INFO GATHERING / SEISMIC SENSORS -->
+        <div class="category" id="target-info-gathering">
+          <div class="name"><span>Target Info Gathering</span> / <span>Seismic Sensors</span></div>
+          <div class="container">
+            <div class="node" id="target-info-gathering_01">
+              <div class="label">Target Info Gathering</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="target-info-gathering_02" parent="target-info-gathering_01">
+              <div class="label">Target Info Gathering</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="target-info-gathering_03" parent="target-info-gathering_02">
+              <div class="label">Target Info Gathering</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="target-info-gathering_04" parent="target-info-gathering_03">
+              <div class="label">Target Info Gathering</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="target-info-gathering_05" parent="target-info-gathering_04">
+              <div class="label">Target Info Gathering</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node hexagon-sensor" id="seismic-sensor_01" parent="target-info-gathering_03">
+              <div class="label">Seismic Sensor</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node hexagon-sensor" id="seismic-sensor_02" parent="target-info-gathering_05">
+              <div class="label">Seismic Sensor</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SENSORS: SENSOR RANGE / ECM / RADAR -->
+        <div class="category" id="sensor-range">
+          <div class="name"><span>Sensor Range</span> / <span>ECM</span> / <span>Radar</span></div>
+          <div class="container">
+            <div class="node" id="sensor-range_01">
+              <div class="label">Sensor Range</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="sensor-range_02" parent="sensor-range_01">
+              <div class="label">Sensor Range</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="sensor-range_03" parent="sensor-range_02">
+              <div class="label">Sensor Range</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="sensor-range_04" parent="sensor-range_03">
+              <div class="label">Sensor Range</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="sensor-range_05" parent="sensor-range_04">
+              <div class="label">Sensor Range</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node hexagon-sensor" id="radar-deprivation_01" parent="sensor-range_01">
+              <div class="label">Radar Deprivation</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node hexagon-sensor" id="radar-deprivation_02" parent="sensor-range_03">
+              <div class="label">Radar Deprivation</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node hexagon-sensor" id="radar-deprivation_03" parent="sensor-range_04">
+              <div class="label">Radar Deprivation</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node hexagon-sensor" id="radar-deprivation_04" parent="sensor-range_05">
+              <div class="label">Radar Deprivation</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node hexagon-sensor" id="radar-deprivation_05" parent="sensor-range_05">
+              <div class="label">Radar Deprivation</div>
+              <div class="enum">5</div>
+            </div>
+            <div class="node hexagon-ecm" id="enhanced-ecm-systems_01" parent="sensor-range_02">
+              <div class="label">Enhanced ECM Systems</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node hexagon-ecm" id="enhanced-ecm-systems_02" parent="sensor-range_05">
+              <div class="label">Enhanced ECM Systems</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SENSORS: TARGET DECAY -->
+        <div class="category" id="target-decay">
+          <div class="name"><span>Target Decay</span></div>
+          <div class="container">
+            <div class="node" id="target-decay_01">
+              <div class="label">Target Decay</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="target-decay_02" parent="target-decay_01">
+              <div class="label">Target Decay</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="target-decay_03" parent="target-decay_02">
+              <div class="label">Target Decay</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="target-decay_04" parent="target-decay_03">
+              <div class="label">Target Decay</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="target-decay_05" parent="target-decay_04">
+              <div class="label">Target Decay</div>
+              <div class="enum">5</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SENSORS: TARGET RETENTION -->
+        <div class="category" id="target-retention">
+          <div class="name"><span>Target Retention</span></div>
+          <div class="container">
+            <div class="node" id="target-retention_01">
+              <div class="label">Target Retention</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="target-retention_02" parent="target-retention_01">
+              <div class="label">Target Retention</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SENSORS: ADVANCED ZOOM -->
+        <div class="category" id="advanced-zoom">
+          <div class="name"><span>Advanced Zoom</span></div>
+          <div class="container">
+            <div class="node" id="advanced-zoom_01">
+              <div class="label">Advanced Zoom</div>
+              <div class="enum"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUXILIARY -->
+    <div class="section" id="auxiliary">
+      <div class="name">Auxiliary</div>
+      <div class="container">
+        <!-- AUXILIARY: CONSUMABLES -->
+        <div class="category" id="consumables">
+          <div class="name"><span>Consumables</span></div>
+          <div class="container">
+            <div class="node hexagon-consumable" id="consumable-slot_01">
+              <div class="label">Consumable Slot</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node hexagon-consumable" id="consumable-slot_02" parent="uav-range_01">
+              <div class="label">Consumable Slot</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node hexagon-consumable" id="consumable-slot_03" parent="advanced-salvos_02">
+              <div class="label">Consumable Slot</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node hexagon-consumable" id="consumable-slot_04" parent="enhanced-coolshot_02">
+              <div class="label">Consumable Slot</div>
+              <div class="enum">4</div>
+            </div>
+            <div class="node" id="uav-duration_01" parent="consumable-slot_01">
+              <div class="label">UAV Duration</div>
+              <div class="enum"></div>
+            </div>
+            <div class="node" id="uav-range_01" parent="uav-duration_01">
+              <div class="label">UAV Range</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="uav-range_02" parent="uav-range_01">
+              <div class="label">UAV Range</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="extra-uav_01" parent="uav-range_01">
+              <div class="label">Extra UAV</div>
+              <div class="enum"></div>
+            </div>
+            <div class="node" id="enhanced-coolshot_01" parent="consumable-slot_01">
+              <div class="label">Enhanced Coolshot</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="enhanced-coolshot_02" parent="enhanced-coolshot_01">
+              <div class="label">Enhanced Coolshot</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="coolshot-cooldown_01" parent="enhanced-coolshot_02">
+              <div class="label">Coolshot Cooldown</div>
+              <div class="enum"></div>
+            </div>
+            <div class="node" id="coolant-reserves_01" parent="enhanced-coolshot_02">
+              <div class="label">Coolant Reserves</div>
+              <div class="enum"></div>
+            </div>
+            <div class="node" id="advanced-salvos_01" parent="consumable-slot_01">
+              <div class="label">Adv. Salvos</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="advanced-salvos_02" parent="advanced-salvos_01">
+              <div class="label">Adv. Salvos</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="expanded-reserves_01" parent="advanced-salvos_02">
+              <div class="label">Expanded Reserves</div>
+              <div class="enum"></div>
+            </div>
+            <div class="node" id="enhanced-spotting_01" parent="advanced-salvos_02">
+              <div class="label">Enhanced Spotting</div>
+              <div class="enum"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AUXILIARY: CAPTURE ASSIST -->
+        <div class="category" id="capture-assist">
+          <div class="name"><span>Capture Assist</span></div>
+          <div class="container">
+            <div class="node" id="capture-assist_01">
+              <div class="label">Capture Assist</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="capture-assist_02" parent="capture-assist_01">
+              <div class="label">Capture Assist</div>
+              <div class="enum">2</div>
+            </div>
+            <div class="node" id="capture-assist_03" parent="capture-assist_02">
+              <div class="label">Capture Assist</div>
+              <div class="enum">3</div>
+            </div>
+            <div class="node" id="capture-assist_04" parent="capture-assist_03">
+              <div class="label">Capture Assist</div>
+              <div class="enum">4</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AUXILIARY: ENHANCED NARC -->
+        <div class="category" id="enhanced-narc">
+          <div class="name"><span>Enhanced NARC</span></div>
+          <div class="container hexagon-missile">
+            <div class="node" id="enhanced-narc_01">
+              <div class="label">Enhanced NARC</div>
+              <div class="enum">1</div>
+            </div>
+            <div class="node" id="enhanced-narc_02" parent="enhanced-narc_01">
+              <div class="label">Enhanced NARC</div>
+              <div class="enum">2</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div> <!-- root -->
+</body>
+
+</html>

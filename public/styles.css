@@ -5285,81 +5285,6 @@ body.ui-settings-open {
   height: min(48rem, calc(100dvh - 3rem));
 }
 
-.skill-dialog {
-  width: min(48rem, calc(100vw - 2rem));
-}
-
-.skill-dialog-description {
-  margin: 0;
-  color: #91aab3;
-  font-size: 0.78rem;
-}
-
-.skill-category-options {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-height: min(38rem, calc(100dvh - 14rem));
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
-  padding-right: 0.2rem;
-}
-
-.skill-category-options button.skill-category-all,
-.skill-category-options button.skill-category-recommended {
-  grid-column: 1 / -1;
-  min-height: 4.15rem;
-  border-width: 2px;
-  border-color: #69aabd;
-  background: linear-gradient(135deg, #1d3b45, #142a31);
-  box-shadow: inset 0 0 0 1px #8acbdd22, 0 0 0.45rem #52b9df2b;
-}
-
-.skill-category-options button.skill-category-all:hover,
-.skill-category-options button.skill-category-recommended:hover {
-  border-color: #92d9ef;
-  background: linear-gradient(135deg, #285362, #193841);
-  box-shadow: inset 0 0 0 1px #b8eafa33, 0 0 0.6rem #52b9df55;
-}
-
-.skill-category-options button.skill-category-all.active,
-.skill-category-options button.skill-category-recommended.active {
-  border-color: var(--green);
-  background: linear-gradient(135deg, #1c5137, #153525);
-  box-shadow: inset 0 0 0 1px #8fffc033, 0 0 0.6rem #46d98b66;
-}
-
-.skill-category-options button.skill-category-all .mech-filter-option-copy strong,
-.skill-category-options button.skill-category-recommended .mech-filter-option-copy strong {
-  font-size: 0.92rem;
-  letter-spacing: 0.04em;
-}
-
-.skill-category-options button {
-  min-height: 3.8rem;
-  padding-block: 0.55rem;
-}
-
-.skill-category-options .mech-filter-option-copy {
-  width: 100%;
-}
-
-.skill-node-count {
-  color: #708991 !important;
-  font-size: 0.62rem !important;
-  letter-spacing: 0.04em;
-}
-
-.skill-category-options button.skill-category-all .skill-node-count,
-.skill-category-options button.skill-category-recommended .skill-node-count {
-  color: #a9cbd5 !important;
-  font-size: 0.68rem !important;
-}
-
-@media (max-width: 640px) {
-  .skill-category-options {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .mech-filter-tabs {
   display: flex;
   gap: 0.45rem;
@@ -6143,6 +6068,7 @@ body.ui-settings-open {
 }
 
 #loadout-code-text,
+#skill-code-text,
 #loadout-url-text,
 .community-share-url-text {
   width: 100%;
@@ -6164,7 +6090,19 @@ body.ui-settings-open {
   color: #a9d8e8;
 }
 
+#loadout-code-text { min-height: 4.5rem; }
+#skill-code-text { min-height: 3.2rem; }
+.loadout-field-error { color: #ff8d82; font-weight: 400; letter-spacing: normal; white-space: pre-line; }
+.loadout-code-field textarea[aria-invalid="true"] { border-color: #ff8d82; }
+.share-skills-control { display: flex; flex: 0 0 auto; align-items: center; gap: .4rem; margin-right: auto; font-size: .78rem; color: #c3d9e1; white-space: nowrap; }
+.share-skills-control input { width: auto; margin: 0; flex: none; }
+.share-skills-control[hidden] { display: none; }
+.mobile-app .share-skills-control { grid-column: 1 / -1; }
+#loadout-code-overlay .loadout-code-dialog { max-height: calc(100dvh - 3rem); overflow-y: auto; }
+.mobile-app #loadout-code-overlay .loadout-code-dialog { max-height: 100dvh; }
+
 #loadout-code-text:focus,
+#skill-code-text:focus,
 #loadout-url-text:focus,
 .community-share-url-text:focus {
   border-color: var(--blue);

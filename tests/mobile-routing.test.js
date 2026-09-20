@@ -429,7 +429,7 @@ test("모바일 캔버스는 탭을 먼저 허용하고 이동 임계값을 넘�
   assert.ok(captureIndex > thresholdIndex);
 });
 
-test("모바일 부트스트랩은 루트 골격에 공용 경로를 연결하고 Firebase를 제외한다", async () => {
+test("모바일 부트스트랩은 루트 골격에 공용 경로를 연결하고 Firebase·스킬 모듈을 제외한다", async () => {
   const rootHtml = read("public/index.html");
   const mobileIndex = read("public/mobile/index.html");
   const bootstrap = [...mobileIndex.matchAll(/<script>([\s\S]*?)<\/script>/g)][0]?.[1];
@@ -450,8 +450,10 @@ test("모바일 부트스트랩은 루트 골격에 공용 경로를 연결하�
   assert.match(output, /globalThis\.__MWOLAB_MOBILE__ = true/);
   assert.match(output, /mobile\/mobile\.css/);
   assert.match(output, /loadout-url-codec\.js/);
+  assert.match(output, /mwo-skill-codec\.js/);
   assert.match(output, /mobile\/mobile-app\.js/);
   assert.match(output, /mobile\/mobile-shared-fitting\.js/);
   assert.match(output, /content="noindex,follow,max-image-preview:none"/);
   assert.doesNotMatch(output, /src="firebase-community\.js/);
+  assert.doesNotMatch(output, /src="skill-tree(?:-topology)?\.js/);
 });

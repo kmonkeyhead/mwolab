@@ -891,6 +891,10 @@ html.mobile-app body {
   padding: 0.45rem 0.25rem;
 }
 
+.mobile-app .loadout-code-dialog.mobile-export.has-skill-code .loadout-code-dialog-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .mobile-loadout-code-close {
   font-size: 1.3rem;
   line-height: 1;

@@ -30,7 +30,7 @@
           );
           html = html.replace(
             "</head>",
-            '<link rel="stylesheet" href="mobile/mobile.css?v=20260830-1"></head>',
+            '<link rel="stylesheet" href="mobile/mobile.css?v=20260920-1"></head>',
           );
           html = html.replace(
             '<meta name="robots" content="max-image-preview:none">',
@@ -40,6 +40,7 @@
             /\s*<script type="module" src="firebase-community\.js[^>]*><\/script>/,
             "",
           );
+          html = html.replace(/\s*<script src="skill-tree(?:-topology)?\.js[^>]*><\/script>/g, "");
           html = html.replace(
             "</body>",
             '<script src="mobile/mobile-app.js?v=20260909-1"><\/script><script type="module" src="mobile/mobile-shared-fitting.js?v=20260909-1"><\/script></body>',
