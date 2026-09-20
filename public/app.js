@@ -167,7 +167,8 @@ const TEXT = {
     "skills.group.firepowerHeatGen": "화력 · 힛 젠",
     "skills.group.firepowerVelocity": "화력 · 벨로시티",
     "skills.group.firepowerOther": "화력 · 그 외",
-    "skills.group.operationsHeatSinks": "오퍼레이션 · 히트싱크 강화 (쿨 런 · 히트 콘테이먼트)",
+    "skills.group.operationsCoolRun": "오퍼레이션 · 쿨 런",
+    "skills.group.operationsHeatContainment": "오퍼레이션 · 힛 컨테이먼트",
     "skills.group.operationsOther": "오퍼레이션 · 그 외",
     "ui.open": "개인설정",
     "ui.preferencesTitle": "개인설정",
@@ -778,7 +779,8 @@ const TEXT = {
     "skills.group.firepowerHeatGen": "Firepower · Heat Gen",
     "skills.group.firepowerVelocity": "Firepower · Velocity",
     "skills.group.firepowerOther": "Firepower · Other",
-    "skills.group.operationsHeatSinks": "Operations · Heat Sinks (Cool Run · Heat Containment)",
+    "skills.group.operationsCoolRun": "Operations · Cool Run",
+    "skills.group.operationsHeatContainment": "Operations · Heat Containment",
     "skills.group.operationsOther": "Operations · Other",
     "ui.open": "Preferences",
     "ui.preferencesTitle": "Preferences",
@@ -2117,10 +2119,16 @@ const SKILL_SELECTION_GROUP_DEFINITIONS = Object.freeze([
   Object.freeze({ key: "mobility", category: "mobility", labelKey: "skills.category.mobility" }),
   Object.freeze({ key: "jumpjets", category: "jumpjets", labelKey: "skills.category.jumpjets" }),
   Object.freeze({
-    key: "operations:heatsinks",
+    key: "operations:coolrun",
     category: "operations",
-    subcategories: ["CoolRun", "HeatContainment"],
-    labelKey: "skills.group.operationsHeatSinks",
+    subcategories: ["CoolRun"],
+    labelKey: "skills.group.operationsCoolRun",
+  }),
+  Object.freeze({
+    key: "operations:heatcontainment",
+    category: "operations",
+    subcategories: ["HeatContainment"],
+    labelKey: "skills.group.operationsHeatContainment",
   }),
   Object.freeze({
     key: "operations:other",
@@ -2137,7 +2145,8 @@ const RECOMMENDED_SKILL_GROUP_KEYS = Object.freeze([
   "firepower:heatgen",
   "firepower:velocity",
   "survival",
-  "operations:heatsinks",
+  "operations:coolrun",
+  "operations:heatcontainment",
 ]);
 
 const QUIRK_VALUE_DISPLAY_STORAGE_KEY = "mwolab:quirk-value-display";

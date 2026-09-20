@@ -5297,7 +5297,7 @@ body.ui-settings-open {
 
 .skill-category-options {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-height: min(30rem, calc(100dvh - 14rem));
+  max-height: min(38rem, calc(100dvh - 14rem));
   overflow-y: scroll;
   scrollbar-gutter: stable;
   padding-right: 0.2rem;
