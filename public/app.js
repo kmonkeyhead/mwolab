@@ -8773,12 +8773,18 @@ function weaponModifierFieldValue(source, field) {
   if (field === "minReactivationTime") {
     return number(source?.MinReactivationTime ?? source?.MinReactivationTIme ?? source?.minReactivationTime);
   }
+  if (field === "shotsDuringCooldown") {
+    return number(source?.ShotsDuringCooldown ?? source?.shotsDuringCooldown);
+  }
   return number(source?.[field], field === "numFiring" ? 1 : 0);
 }
 
 function weaponModifierOperand(entry, field) {
   if (field === "minReactivationTime") {
     return Number(entry?.MinReactivationTime ?? entry?.MinReactivationTIme ?? entry?.minReactivationTime);
+  }
+  if (field === "shotsDuringCooldown") {
+    return Number(entry?.ShotsDuringCooldown ?? entry?.shotsDuringCooldown);
   }
   return Number(entry?.[field]);
 }
@@ -8795,6 +8801,7 @@ function effectiveWeaponStats(item, modules = installedMechItems("module")) {
     cooldown: weaponModifierFieldValue(source, "cooldown"),
     ammoPerShot: weaponModifierFieldValue(source, "ammoPerShot"),
     minReactivationTime: weaponModifierFieldValue(source, "minReactivationTime"),
+    shotsDuringCooldown: weaponModifierFieldValue(source, "shotsDuringCooldown"),
   };
   const modes = new Set();
   const matchedFilterIndexes = [];
@@ -9118,7 +9125,7 @@ function weaponFiringTime(item, modules = installedMechItems("module")) {
 
 function weaponHasExpectedCooldown(item, modules = installedMechItems("module")) {
   const stats = item?.stats || {};
-  return isUltraAutoCannon(item)
+  return weaponShotsDuringCooldown(item, modules) > 0
     || number(stats.chargeTime) > 0
     || number(stats.duration) > 0
     || weaponFiringTime(item, modules) > 0;
@@ -9129,13 +9136,22 @@ function weaponExpectedCooldown(item, quirks = [], modules = installedMechItems(
   const stats = item?.stats || {};
   const timing = simulationWeaponTiming(item, quirks, modules);
   const firingTime = weaponFiringTime(item, modules);
-  if (isUltraAutoCannon(item)) {
-    const jam = ultraAutoCannonJamStats(item, quirks);
+  const doubleTapShots = weaponShotsDuringCooldown(item, modules);
+  if (doubleTapShots > 0) {
+    const jam = ultraAutoCannonJamStats(item, quirks, modules);
+    const success = Math.max(0, 1 - jam.chance);
+    let survival = 1;
+    let expectedShots = 1;
+    for (let index = 0; index < doubleTapShots; index += 1) {
+      survival *= success;
+      expectedShots += survival;
+    }
+    const jamChance = 1 - survival;
     return (
       firingTime
-      + (1 - jam.chance) * timing.cooldown
-      + jam.chance * Math.max(timing.cooldown, jam.duration)
-    ) / Math.max(1, 2 - jam.chance);
+      + (1 - jamChance) * timing.cooldown
+      + jamChance * Math.max(timing.cooldown, jam.duration)
+    ) / Math.max(1, expectedShots);
   }
   return Math.max(0.016,
     Math.max(0, number(stats.chargeTime))
@@ -9329,8 +9345,8 @@ function collectSimulationWeapons() {
         volleySize: firingProfile.volleySize,
         eventCount: firingProfile.eventCount,
         shotDelay: firingProfile.shotDelay,
-        ultra: isUltraAutoCannon(item),
-        jam: ultraAutoCannonJamStats(item, quirks),
+        doubleTapShots: weaponShotsDuringCooldown(item, modules),
+        jam: ultraAutoCannonJamStats(item, quirks, modules),
         rangeProfile: simulationWeaponRangeProfile(
           item,
           simulationWeaponRangeBonus(item, quirks),
@@ -9379,8 +9395,8 @@ function collectSimulationWeapons() {
         volleySize: firingProfile.volleySize,
         eventCount: firingProfile.eventCount,
         shotDelay: firingProfile.shotDelay,
-        ultra: isUltraAutoCannon(item),
-        jam: ultraAutoCannonJamStats(item, quirks),
+        doubleTapShots: weaponShotsDuringCooldown(item, modules),
+        jam: ultraAutoCannonJamStats(item, quirks, modules),
         rangeProfile: simulationWeaponRangeProfile(
           item,
           simulationWeaponRangeBonus(item, quirks),
@@ -10668,18 +10684,22 @@ function scheduleSimulationWeaponCycle(weapon, triggerAt) {
   simulation.cooldownStartAt.set(weapon.key, cooldownStart);
   let nextFireAt = cooldownStart + weapon.cooldown * 1000;
 
-  if (weapon.ultra) {
-    const jammed = Math.random() < weapon.jam.chance;
-    if (jammed) {
-      const jammedUntil = cooldownStart + weapon.jam.duration * 1000;
-      simulation.jamStartsAt.set(weapon.key, cooldownStart);
-      simulation.jammedUntil.set(weapon.key, jammedUntil);
-      nextFireAt = Math.max(nextFireAt, jammedUntil);
-    } else {
-      simulation.jamStartsAt.delete(weapon.key);
-      simulation.jammedUntil.delete(weapon.key);
-      // The double-tap volley fires during the active cooldown and does not pause it.
-      queueSimulationVolley(weapon, cooldownStart);
+  const doubleTapShots = Math.max(0, Math.trunc(number(weapon.doubleTapShots)));
+  if (doubleTapShots > 0) {
+    simulation.jamStartsAt.delete(weapon.key);
+    simulation.jammedUntil.delete(weapon.key);
+    // Each ShotsDuringCooldown attempt rolls its own jam chance and stops the chain on the first jam.
+    // The double-tap volleys fire during the active cooldown and do not pause it.
+    for (let index = 0; index < doubleTapShots; index += 1) {
+      const attemptAt = cooldownStart + index * weapon.firingTime * 1000;
+      if (Math.random() < weapon.jam.chance) {
+        const jammedUntil = attemptAt + weapon.jam.duration * 1000;
+        simulation.jamStartsAt.set(weapon.key, attemptAt);
+        simulation.jammedUntil.set(weapon.key, jammedUntil);
+        nextFireAt = Math.max(nextFireAt, jammedUntil);
+        break;
+      }
+      queueSimulationVolley(weapon, attemptAt);
     }
   } else {
     simulation.jamStartsAt.delete(weapon.key);
@@ -11254,7 +11274,7 @@ function equipmentInfoWeaponRow(item, index) {
   const criticalChanceValues = weaponCriticalChanceValues(item);
   const criticalChance = criticalChanceValues.find((value) => Math.abs(value) > 0.000001) ?? Number.NaN;
   const criticalDamage = Number(stats.critDamMult);
-  const jam = ultraAutoCannonJamStats(item, []);
+  const jam = ultraAutoCannonJamStats(item, [], []);
   const dps = usesPerSecondStats
     ? totalDamage
     : (expectedCooldown > 0 ? totalDamage / expectedCooldown : Number.NaN);
@@ -15103,6 +15123,10 @@ function isUltraAutoCannon(item) {
   return Array.from(simulationItemKeys(item)).some((key) => key.includes("ultraautocannon"));
 }
 
+function weaponShotsDuringCooldown(item, modules = installedMechItems("module")) {
+  return Math.max(0, Math.trunc(effectiveWeaponStats(item, modules).shotsDuringCooldown));
+}
+
 function isAtmWeapon(item) {
   const keys = simulationItemKeys(item);
   return keys.has("atm") || keys.has("clanatm");
@@ -15126,7 +15150,7 @@ function atmTooltipDamageBands(item, rangeBonus = 0) {
   ];
 }
 
-function ultraAutoCannonJamStats(item, quirks = []) {
+function ultraAutoCannonJamStats(item, quirks = [], modules = installedMechItems("module")) {
   const baseChance = Math.max(0, number(item?.stats?.JammingChance));
   const baseDuration = Math.max(0, number(item?.stats?.JammedTime));
   const effects = collectWeaponQuirkEffects(item, quirks).totals;
@@ -15137,6 +15161,7 @@ function ultraAutoCannonJamStats(item, quirks = []) {
     chance: Math.max(0, Math.min(1, baseChance * Math.max(0, 1 - chanceReduction))),
     baseDuration,
     duration: Math.max(0, baseDuration * Math.max(0, 1 - durationReduction)),
+    shots: weaponShotsDuringCooldown(item, modules),
   };
 }
 
@@ -15340,7 +15365,7 @@ function equipmentTooltipGroups(
       weaponDetailRows.push(["CHARGE TIME", tooltipNumber(stats.chargeTime, 2, " s")]);
     }
     if (isUltraAutoCannon(item)) {
-      const jam = ultraAutoCannonJamStats(item, quirks);
+      const jam = ultraAutoCannonJamStats(item, quirks, modules);
       weaponDetailRows.push([
         "JAM DURATION",
         tooltipQuirkValue(jam.baseDuration, jam.duration, 2, " s"),
@@ -17960,6 +17985,7 @@ if (globalThis.__MWOLAB_TEST__) {
     targetComputerWeaponModifiers,
     weaponFunctionModesForItem,
     effectiveWeaponStats,
+    SUPPORTED_WEAPON_MODIFIER_FIELDS,
     effectiveWeaponFiringProfile,
     simulationWeaponTiming,
     collectSimulationWeapons,
@@ -18018,6 +18044,8 @@ if (globalThis.__MWOLAB_TEST__) {
     atmRangeBoundary,
     atmTooltipDamageBands,
     ultraAutoCannonJamStats,
+    weaponShotsDuringCooldown,
+    scheduleSimulationWeaponCycle,
     mechSummaryWeaponMetrics,
     mechSummaryAlphaHeatRows,
     renderMechSummaryAlphaHeat,

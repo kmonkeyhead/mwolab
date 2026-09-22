@@ -1956,6 +1956,7 @@ test("무기 쿼크·연사·사거리 공식", async (t) => {
         numFiring: 4,
         damage: 5,
         volleydelay: 0.11,
+        ShotsDuringCooldown: 1,
       },
     });
     const gauss = weapon({
@@ -2039,7 +2040,14 @@ test("무기 쿼크·연사·사거리 공식", async (t) => {
       const item = weapon({
         name,
         hardpoint_type: "ballistic",
-        stats: { ammoType: `${name}Ammo`, ammoPerShot: 1, numFiring: shots, damage, volleydelay: 0.11 },
+        stats: {
+          ammoType: `${name}Ammo`,
+          ammoPerShot: 1,
+          numFiring: shots,
+          damage,
+          volleydelay: 0.11,
+          ...(name.includes("Ultra") ? { ShotsDuringCooldown: 1 } : {}),
+        },
       });
       const effective = api.effectiveWeaponStats(item, [allSingleLoader]);
       assert.deepEqual(Array.from(effective.matchedFilterIndexes), [0, index + 1], name);
@@ -3123,6 +3131,149 @@ test("무기 쿼크·연사·사거리 공식", async (t) => {
       + 0.2 * Math.max(1, 5)
     ) / (2 - 0.2);
     closeTo(api.weaponExpectedCooldown(item), expectedCycle);
+  });
+
+  await t.test("더블탭은 ShotsDuringCooldown 횟수만큼 시도하고 기대 쿨다운에 반영한다", () => {
+    const base = {
+      name: "UltraAutoCannon5",
+      aliases: "Ballistic,UltraAutoCannon,UltraAutoCannon5",
+      stats: {
+        damage: 5,
+        numFiring: 1,
+        cooldown: 1,
+        volleydelay: 0.2,
+        JammingChance: 0.2,
+        JammedTime: 5,
+      },
+    };
+    const twoShots = weapon({ ...base, stats: { ...base.stats, ShotsDuringCooldown: 2 } });
+    assert.equal(api.weaponShotsDuringCooldown(twoShots), 2);
+    assert.equal(api.ultraAutoCannonJamStats(twoShots).shots, 2);
+    // 추가 발사 2회는 각각 잼을 굴리므로 기대 발사 수는 1 + 0.8 + 0.8^2, 잼 확률은 1 - 0.8^2이다.
+    const expectedShots = 1 + 0.8 + 0.8 * 0.8;
+    const jamChance = 1 - 0.8 * 0.8;
+    closeTo(
+      api.weaponExpectedCooldown(twoShots),
+      ((1 - jamChance) * 1 + jamChance * Math.max(1, 5)) / expectedShots,
+    );
+
+    const noShots = weapon({ ...base, stats: { ...base.stats } });
+    assert.equal(api.weaponShotsDuringCooldown(noShots), 0);
+    assert.equal(api.weaponExpectedCooldown(noShots), null);
+  });
+
+  await t.test("ShotsDuringCooldown은 공용 장비 Modifier 스냅샷을 거쳐 최종값이 된다", () => {
+    const uac5 = weapon({
+      name: "UltraAutoCannon5",
+      aliases: "Ballistic,UltraAutoCannon,UltraAutoCannon5",
+      hardpoint_type: "ballistic",
+      stats: {
+        damage: 5,
+        numFiring: 1,
+        cooldown: 1,
+        volleydelay: 0.2,
+        JammingChance: 0.2,
+        JammedTime: 5,
+        ShotsDuringCooldown: 1,
+      },
+    });
+    const uac10 = weapon({
+      id: 2,
+      name: "UltraAutoCannon10",
+      aliases: "Ballistic,UltraAutoCannon,UltraAutoCannon10",
+      hardpoint_type: "ballistic",
+      stats: { ...uac5.stats },
+    });
+    const loader = {
+      id: 9031,
+      item_type: "module",
+      name: "BaneHeroComputer",
+      display_name: "Modified Ballistic Loader",
+      weapon_stat_filters: [
+        {
+          compatible_weapons: ["UltraAutoCannon5"],
+          weapon_stats: [{ operation: "+", ShotsDuringCooldown: 1 }],
+        },
+      ],
+    };
+
+    assert.equal(api.effectiveWeaponStats(uac5, []).shotsDuringCooldown, 1);
+    // 지원 필드로 등록하기 전에는 필터가 일치해도 값을 바꾸지 않는다.
+    assert.equal(api.weaponShotsDuringCooldown(uac5, [loader]), 1);
+
+    const supported = api.SUPPORTED_WEAPON_MODIFIER_FIELDS.get(9031);
+    supported.add("shotsDuringCooldown");
+    try {
+      const effective = api.effectiveWeaponStats(uac5, [loader]);
+      assert.equal(effective.shotsDuringCooldown, 2);
+      assert.ok(effective.contributions.some((entry) => (
+        entry.field === "shotsDuringCooldown"
+        && entry.operation === "+"
+        && entry.before === 1
+        && entry.after === 2
+      )));
+      assert.equal(api.weaponShotsDuringCooldown(uac5, [loader]), 2);
+      assert.equal(api.ultraAutoCannonJamStats(uac5, [], [loader]).shots, 2);
+      const expectedShots = 1 + 0.8 + 0.8 * 0.8;
+      const jamChance = 1 - 0.8 * 0.8;
+      closeTo(
+        api.weaponExpectedCooldown(uac5, [], [loader]),
+        ((1 - jamChance) * 1 + jamChance * Math.max(1, 5)) / expectedShots,
+      );
+      // exact match가 아닌 무기와 빈 모듈 목록은 원본을 유지한다.
+      assert.equal(api.weaponShotsDuringCooldown(uac10, [loader]), 1);
+      assert.equal(api.weaponShotsDuringCooldown(uac5, []), 1);
+    } finally {
+      supported.delete("shotsDuringCooldown");
+    }
+    assert.equal(api.weaponShotsDuringCooldown(uac5, [loader]), 1);
+  });
+
+  await t.test("시뮬레이션 더블탭은 추가 발사마다 잼을 굴리고 첫 잼에서 멈춘다", () => {
+    const simulation = api.state.simulation;
+    const reset = () => {
+      simulation.pendingShots.length = 0;
+      simulation.nextFireAt.clear();
+      simulation.cooldownStartAt.clear();
+      simulation.jamStartsAt.clear();
+      simulation.jammedUntil.clear();
+    };
+    const simWeapon = (doubleTapShots, chance) => ({
+      key: "sim",
+      chargeTime: 0,
+      duration: 0,
+      firingTime: 0.1,
+      cooldown: 2,
+      shotCount: 1,
+      volleySize: 1,
+      eventCount: 1,
+      shotDelay: 0,
+      doubleTapShots,
+      jam: { chance, duration: 4 },
+    });
+
+    reset();
+    api.scheduleSimulationWeaponCycle(simWeapon(2, 0), 0);
+    assert.deepEqual(Array.from(simulation.pendingShots, (shot) => shot.at), [0, 100, 200]);
+    assert.equal(simulation.jamStartsAt.has("sim"), false);
+    assert.equal(simulation.nextFireAt.get("sim"), 2100);
+
+    reset();
+    api.scheduleSimulationWeaponCycle(simWeapon(2, 1), 0);
+    assert.deepEqual(Array.from(simulation.pendingShots, (shot) => shot.at), [0]);
+    assert.equal(simulation.jamStartsAt.get("sim"), 100);
+    assert.equal(simulation.jammedUntil.get("sim"), 4100);
+    assert.equal(simulation.nextFireAt.get("sim"), 4100);
+
+    reset();
+    const chances = [0, 1];
+    const sequential = simWeapon(3, 0);
+    sequential.jam = { duration: 4, get chance() { return chances.shift() ?? 1; } };
+    api.scheduleSimulationWeaponCycle(sequential, 0);
+    assert.deepEqual(Array.from(simulation.pendingShots, (shot) => shot.at), [0, 100]);
+    assert.equal(simulation.jamStartsAt.get("sim"), 200);
+    assert.equal(simulation.jammedUntil.get("sim"), 4200);
+    reset();
   });
 
   await t.test("AMS additive와 ROF 피해율의 총 스플래시 배율을 계산한다", () => {

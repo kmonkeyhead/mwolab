@@ -30,6 +30,7 @@ effective mech definition
 - 필터 배열 순서와 각 필터의 `weapon_stats` 배열 순서를 보존한다.
 - 원본 장비 JSON과 무기 객체는 변경하지 않고 브라우저 메모리의 파생 스냅샷만 만든다.
 - 필드 의미나 기본값을 장비명·접미사·유사 장비로 추정하지 않는다.
+- 추출 데이터의 `ShotsDuringCooldown` 표기는 원본 무기와 필터 양쪽에서 하나의 `shotsDuringCooldown`으로 정규화한다. 더블탭 시도 수는 이 최종값을 소비한다.
 - 지원 장비별로 근거가 확인된 필드 집합만 공용 연산기에 등록한다. 각 기체 전용 계산식을 만들지 않으며, 같은 장비 ID가 여러 번 들어오면 occurrence를 제거하지 않고 입력 순서대로 적용한다.
 - 파생 결과에는 모듈 occurrence, 필터·스탯 인덱스, 필드, 연산자, operand와 연산 전후 값을 기여 내역으로 보존한다.
 
@@ -72,6 +73,7 @@ effective mech definition
 - projectile 및 pellet 수
 - 탄약 1회 소비량
 - 발사 이벤트 수, 발사 간격, 예상 쿨다운
+- 더블탭 추가 발사 시도 수
 - spread와 Artemis·spread 쿼크의 후속 계산
 - 무기 툴팁의 DAMAGE, SHOTS, SHOT INTERVAL, SPREAD, DPS, DPH
 - 빌드 Alpha Damage와 탄약 요약
@@ -102,4 +104,5 @@ effective mech definition
 
 - NAGA-AMAROK도 BANE-L과 같은 공용 연산기를 사용하며 효과 내용만 장비별 지원 필드로 구분한다.
 - 다른 장비를 계산에 연결할 때는 해당 장비의 명시 필드와 공식이 확정된 뒤 지원 ID와 필드를 추가한다.
+- 쿨다운 도중 추가 발사 수를 늘리는 특수장비는 `shotsDuringCooldown` 정규화와 소비 경로(예상 쿨다운·시뮬레이션)까지 준비돼 있다. 남은 작업은 해당 장비 ID와 `shotsDuringCooldown` 필드를 지원 집합에 등록하는 것이며, 등록 전에는 필터에 값이 있어도 원본 수치를 유지한다.
 - 새 장비를 추가할 때는 정확 매칭, 여러 필터 중첩, 원본 순서, 비대상 장비 불변, 빌드·툴팁·시뮬레이션 일치를 함께 테스트한다.
