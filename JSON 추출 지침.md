@@ -2,6 +2,8 @@
 
 ## 생성 데이터
 
+- XML은 먼저 원본 바이트 그대로 엄격하게 파싱한다. 엄격 파싱이 실패한 경우에만, XML 시작 태그에서 속성 문자열 밖의 `/` 뒤에 공백·탭과 CRLF·LF 또는 EOF만 남고 닫는 `>`가 없는 형태를 메모리에서 `/>`로 보정해 한 번 다시 파싱할 수 있다. 주석, CDATA, 선언, 처리 지시문, 속성 문자열과 일반 텍스트는 보정 후보가 아니며, 재시도도 실패하면 추출을 중단한다. 원본 PAK는 변경하지 않고 성공한 보정의 원본 경로와 줄 번호만 진단으로 남긴다.
+
 - 의도적인 게임 데이터 갱신에는 `tools/extract_mwo_data.py`를 사용한다. 생성되는 브라우저 데이터는 `public/data/index.json`, `mechs.json`, `equipment.json`, `localization.json`, `loadouts.json`, `omnipods.json`, `shake_damping_mechs.json`, `skills.json`이다.
 - 멕 아이콘 전체 갱신에는 `python tools/extract_mwo_mech_icons.py --game-dir "F:\Game\Steam\steamapps\common\MechWarrior Online"`을 사용한다. 추출기는 `GameData.pak`의 `Libs/UI/Screens/Assets/MechIcons/` 바로 아래 PNG를 읽어 basename을 소문자로 정규화하고, `ReplaceIcon`의 대소문자를 무시한 동일 파일명 PNG를 우선 적용한 뒤 `local-mech-icons`와 `public/assets/mech-icons`에 게시한다. 정규화된 파일명이 충돌하면 게시 전에 중단한다. 교체 파일은 PAK에 같은 이름의 원본이 있어야 하며 모든 원본과 교체본은 256×256 8비트 RGBA PNG여야 한다. 기존 대상 폴더에만 있는 별도 아이콘은 삭제하지 않으며, PAK에 없는 현재 멕 아이콘은 기존 브라우저 폴더에 유효한 파일이 있어야 게시를 시작한다.
 - `전체 JSON 갱신` 워크플로는 JSON 전체 추출과 위 멕 아이콘 전체 추출·`ReplaceIcon` 적용을 하나의 검증·게시 트랜잭션으로 반드시 함께 수행한다.

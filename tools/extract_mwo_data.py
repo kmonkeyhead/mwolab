@@ -49,11 +49,138 @@ SKILL_CATEGORY_COLUMN_RANGES = [
 SKILL_SCOPE_TYPES = {"Faction", "WeightClass", "Tonnage", "Mech"}
 
 
+def missing_self_closing_tag_endings(data: bytes):
+    """Return byte offsets of a narrowly proven missing ``>`` terminator.
+
+    The installed data has one known form of XML damage: a complete start tag
+    ending in ``/`` at a physical line boundary, without its final ``>``.  Do
+    not make this a general XML fixer.  In particular, comments, CDATA,
+    declarations, processing instructions, quoted attribute values, and text
+    are skipped rather than searched for a repair candidate.
+    """
+    repairs = []
+    index = 0
+    length = len(data)
+    name_start = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_:"
+
+    while index < length:
+        if data[index:index + 1] != b"<":
+            index += 1
+            continue
+        if data.startswith(b"<!--", index):
+            end = data.find(b"-->", index + 4)
+            index = length if end == -1 else end + 3
+            continue
+        if data.startswith(b"<![CDATA[", index):
+            end = data.find(b"]]>", index + 9)
+            index = length if end == -1 else end + 3
+            continue
+        if data.startswith(b"<?", index):
+            end = data.find(b"?>", index + 2)
+            index = length if end == -1 else end + 2
+            continue
+        if data.startswith(b"<!", index) or data.startswith(b"</", index):
+            # Declarations (including DOCTYPE internal subsets) and end tags
+            # are not start tags.  Skip quoted text and nested declaration
+            # brackets so their contents cannot become repair candidates.
+            cursor = index + 2
+            quote = None
+            bracket_depth = 0
+            while cursor < length:
+                char = data[cursor:cursor + 1]
+                if quote:
+                    if char == quote:
+                        quote = None
+                elif char in (b'"', b"'"):
+                    quote = char
+                elif char == b"[":
+                    bracket_depth += 1
+                elif char == b"]" and bracket_depth:
+                    bracket_depth -= 1
+                elif char == b">" and not bracket_depth:
+                    cursor += 1
+                    break
+                cursor += 1
+            index = cursor
+            continue
+        if data[index + 1:index + 2] not in name_start:
+            index += 1
+            continue
+
+        # This is a named XML start tag.  Only a slash outside attribute
+        # quotes followed only by horizontal whitespace and a line boundary
+        # (or EOF) can be repaired.
+        cursor = index + 1
+        quote = None
+        while cursor < length:
+            char = data[cursor:cursor + 1]
+            if quote:
+                if char == quote:
+                    quote = None
+                cursor += 1
+                continue
+            if char in (b'"', b"'"):
+                quote = char
+                cursor += 1
+                continue
+            if char == b">":
+                cursor += 1
+                break
+            if char == b"/":
+                boundary = cursor + 1
+                while boundary < length and data[boundary:boundary + 1] in (b" ", b"\t"):
+                    boundary += 1
+                if (
+                    boundary == length
+                    or data.startswith(b"\r\n", boundary)
+                    or data.startswith(b"\n", boundary)
+                ):
+                    repairs.append(cursor + 1)
+                    cursor = boundary
+                    if data.startswith(b"\r\n", cursor):
+                        cursor += 2
+                    elif data.startswith(b"\n", cursor):
+                        cursor += 1
+                    break
+            cursor += 1
+        index = cursor
+    return repairs
+
+
+def apply_missing_self_closing_tag_endings(data: bytes, repairs):
+    if not repairs:
+        return data
+    repaired = bytearray()
+    previous = 0
+    for offset in repairs:
+        repaired.extend(data[previous:offset])
+        repaired.extend(b">")
+        previous = offset
+    repaired.extend(data[previous:])
+    return bytes(repaired)
+
+
+def source_lines_for_offsets(data: bytes, offsets):
+    return [data.count(b"\n", 0, offset) + 1 for offset in offsets]
+
+
 def parse_xml(data: bytes, source: str):
     try:
         return ET.fromstring(data)
-    except ET.ParseError as exc:
-        raise RuntimeError(f"Could not parse {source}: {exc}") from exc
+    except ET.ParseError as strict_error:
+        repairs = missing_self_closing_tag_endings(data)
+        if not repairs:
+            raise RuntimeError(f"Could not parse {source}: {strict_error}") from strict_error
+        try:
+            root = ET.fromstring(apply_missing_self_closing_tag_endings(data, repairs))
+        except ET.ParseError as repaired_error:
+            raise RuntimeError(f"Could not parse {source}: {repaired_error}") from repaired_error
+        lines = ", ".join(str(line) for line in source_lines_for_offsets(data, repairs))
+        print(
+            f"Repaired missing XML self-closing tag terminator in {source} at line(s): {lines}",
+            file=sys.stderr,
+        )
+        return root
 
 
 def maybe_num(value):
@@ -508,7 +635,7 @@ def parse_hardpoint_weapon_slots(zf):
             root = parse_xml(zf.read(inner_path), inner_path)
         except Exception as error:
             raise RuntimeError(
-                f"Failed to parse detailed OmniPod source {inner_path}"
+                f"Failed to parse hardpoint source {inner_path}"
             ) from error
         for hardpoint in root.findall("Hardpoint"):
             hardpoint_id = hardpoint.attrib.get("id")
@@ -937,8 +1064,10 @@ def parse_detailed_omnipods(zf, localization, hardpoint_slot_counts):
             continue
         try:
             root = parse_xml(zf.read(inner_path), inner_path)
-        except Exception:
-            continue
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to parse detailed OmniPod source {inner_path}"
+            ) from error
         chassis = Path(inner_path).parent.name.lower()
         for set_node in root.findall("Set"):
             set_name = set_node.attrib.get("name", "").lower()

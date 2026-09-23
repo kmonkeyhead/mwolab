@@ -1,7 +1,9 @@
 import importlib.util
+import io
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stderr
 from pathlib import Path
 
 
@@ -46,6 +48,126 @@ def definitions(omnipod=None):
 
 
 class ExtractMwoDataTests(unittest.TestCase):
+    def test_parse_xml_keeps_valid_input_unchanged(self):
+        data = b'<root><Quirk name="x" value="-0.2" /></root>'
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics):
+            root = EXTRACTOR.parse_xml(data, "valid.xml")
+
+        self.assertEqual(root[0].attrib, {"name": "x", "value": "-0.2"})
+        self.assertEqual(diagnostics.getvalue(), "")
+
+    def test_parse_mdf_repairs_missing_self_closing_tag_terminator(self):
+        data = b'''<Definition>
+<Mech Variant="JM6-DDP" />
+<QuirkList>
+<Quirk name="ultraautocannon_jamduration_multiplier" value="-0.2" /
+</QuirkList>
+</Definition>'''
+        source = "jagermech.pak:Objects/mechs/jagermech/jm6-ddp.mdf"
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics):
+            definition, _ = EXTRACTOR.parse_mdf(data, source, {}, {})
+
+        self.assertEqual(
+            definition["quirks"][0]["name"],
+            "ultraautocannon_jamduration_multiplier",
+        )
+        self.assertEqual(definition["quirks"][0]["value"], -0.2)
+        self.assertIn(source, diagnostics.getvalue())
+        self.assertIn("line(s): 4", diagnostics.getvalue())
+
+    def test_parse_xml_repairs_multiple_crlf_terminators(self):
+        data = (
+            b"<root>\r\n"
+            b'<Quirk name="first" value="-0.2" /\t \r\n'
+            b'<Quirk name="second" value="-0.1" / \r\n'
+            b"</root>"
+        )
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics):
+            root = EXTRACTOR.parse_xml(data, "multiple-crlf.xml")
+
+        self.assertEqual([node.attrib["value"] for node in root], ["-0.2", "-0.1"])
+        self.assertIn("line(s): 2, 3", diagnostics.getvalue())
+
+    def test_parse_xml_repairs_final_line_terminator_at_eof(self):
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics):
+            root = EXTRACTOR.parse_xml(b"<root /", "final-line.xml")
+
+        self.assertEqual(root.tag, "root")
+        self.assertIn("line(s): 1", diagnostics.getvalue())
+
+    def test_parse_xml_ignores_non_tag_lookalikes_during_repair(self):
+        data = b'''<!DOCTYPE root [
+<!ENTITY lookalike "<Tag value='x' /
+">
+]>
+<root>
+<!-- <Tag value="x" /
+-->
+<?note <Tag value="x" /
+?>
+<value><![CDATA[<Tag value="x" /
+]]></value>
+<plain>ordinary /\x20
+</plain>
+<real value="kept" /
+</root>'''
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics):
+            root = EXTRACTOR.parse_xml(data, "lookalikes.xml")
+
+        self.assertEqual(root.find("value").text, '<Tag value="x" /\n')
+        self.assertEqual(root.find("plain").text, "ordinary / \n")
+        self.assertEqual(root.find("real").attrib, {"value": "kept"})
+        self.assertIn("line(s): 14", diagnostics.getvalue())
+
+    def test_parse_xml_rejects_other_malformed_input_without_repair_log(self):
+        data = b'''<root><Quirk name="first" name="duplicate" /
+</root>'''
+        diagnostics = io.StringIO()
+
+        with redirect_stderr(diagnostics), self.assertRaisesRegex(
+            RuntimeError,
+            "broken-source.mdf",
+        ):
+            EXTRACTOR.parse_xml(data, "broken-source.mdf")
+
+        self.assertEqual(diagnostics.getvalue(), "")
+
+    def test_parse_xml_rejects_unmatched_attribute_quote(self):
+        data = b'<root><Quirk value="unterminated /\n</root>'
+
+        with self.assertRaisesRegex(RuntimeError, "quoted-source.mdf"):
+            EXTRACTOR.parse_xml(data, "quoted-source.mdf")
+
+    def test_malformed_hardpoint_source_stops_extraction(self):
+        path = "Objects/mechs/test/test-hardpoints.xml"
+        source = FakeGameData({path: b'<Hardpoints><Hardpoint id="1">'})
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            f"Failed to parse hardpoint source {path}",
+        ):
+            EXTRACTOR.parse_hardpoint_weapon_slots(source)
+
+    def test_malformed_detailed_omnipod_source_stops_extraction(self):
+        path = "Objects/mechs/test/test-omnipods.xml"
+        source = FakeGameData({path: b'<OmniPods><Set name="test">'})
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            f"Failed to parse detailed OmniPod source {path}",
+        ):
+            EXTRACTOR.parse_detailed_omnipods(source, {}, {})
+
     def parse_loadout(self, loadout_omnipod=None, mdf_omnipod=None):
         game_data = FakeGameData({
             "Libs/MechLoadout/vpr-sc.xml": loadout_xml(loadout_omnipod),
