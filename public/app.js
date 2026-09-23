@@ -8756,7 +8756,45 @@ function weaponFunctionModesForItem(item, modules = installedMechItems("module")
 const SUPPORTED_WEAPON_MODIFIER_FIELDS = new Map([
   [9031, new Set(["damage", "numFiring", "numPerShot", "spread", "volleydelay"])],
   [9032, new Set(["numFiring", "ammoPerShot", "volleydelay", "cooldown", "minReactivationTime"])],
+  [9035, new Set(["shotsDuringCooldown"])],
 ]);
+
+// 장비 자체 툴팁과 무기 `적용 효과`가 같은 필터 데이터에서 같은 표기를 만들도록 공유한다.
+const DISPLAYED_WEAPON_MODIFIER_FIELDS = new Map([
+  [9031, { volleydelay: { label: "C.HAG INTERVAL", digits: 4, requiresFunctionMode: true } }],
+  [9035, { shotsDuringCooldown: { label: "UAC DOUBLE TAP", digits: 0, tone: "quirk-tone-ballistic" } }],
+]);
+
+function displayedWeaponModifierEffects(moduleId, filter, weaponStats) {
+  const fields = DISPLAYED_WEAPON_MODIFIER_FIELDS.get(number(moduleId));
+  if (!fields) return [];
+  const operation = String(weaponStats?.operation || "");
+  if (operation !== "+" && operation !== "*") return [];
+  const effects = [];
+  Object.entries(fields).forEach(([field, config]) => {
+    if (config.requiresFunctionMode && !weaponFilterFunctionMode(filter)) return;
+    const operand = weaponModifierOperand(weaponStats, field);
+    if (!Number.isFinite(operand)) return;
+    effects.push({
+      key: field,
+      label: config.label,
+      tone: config.tone || "",
+      value: operand,
+      value_text: operation === "+"
+        ? signedEquipmentEffectText(operand, config.digits)
+        : `×${tooltipNumber(operand, config.digits)}`,
+    });
+  });
+  return effects;
+}
+
+function hasDisplayedWeaponModifierEffects(item) {
+  return (item?.weapon_stat_filters || []).some((filter) => (
+    (filter.weapon_stats || []).some((weaponStats) => (
+      displayedWeaponModifierEffects(item?.id, filter, weaponStats).length > 0
+    ))
+  ));
+}
 
 function matchingInstalledWeaponFilters(item, modules = installedMechItems("module")) {
   const records = [];
@@ -8926,24 +8964,7 @@ function collectTargetComputerWeaponEffects(item, modules = installedMechItems("
       });
       (filter.weapon_stats || []).forEach((weaponStats) => {
         const operation = String(weaponStats.operation || "");
-        if (number(module?.id) === 9031 && functionMode) {
-          const labels = {
-            volleydelay: "C.HAG INTERVAL",
-          };
-          Object.entries(labels).forEach(([field, label]) => {
-            if (weaponStats[field] === undefined || (operation !== "+" && operation !== "*")) return;
-            const operand = Number(weaponStats[field]);
-            if (!Number.isFinite(operand)) return;
-            transformEffects.push({
-              key: field,
-              label,
-              value: operand,
-              value_text: operation === "+"
-                ? signedEquipmentEffectText(operand, 4)
-                : `×${tooltipNumber(operand, 4)}`,
-            });
-          });
-        }
+        transformEffects.push(...displayedWeaponModifierEffects(module?.id, filter, weaponStats));
         if (operation === "*" && number(weaponStats.speed) > 0) {
           const value = number(weaponStats.speed, 1) - 1;
           totals.speedBonus += value;
@@ -15223,22 +15244,9 @@ function targetComputerTooltipRows(item) {
           .join(" / ");
         rows.push([`${scope} CRITICAL CHANCE`, values]);
       }
-      if (number(item?.id) === 9031 && weaponFilterFunctionMode(filter)) {
-        const labels = {
-          volleydelay: "C.HAG INTERVAL",
-        };
-        Object.entries(labels).forEach(([field, label]) => {
-          if (weaponStats[field] === undefined) return;
-          const operand = Number(weaponStats[field]);
-          if (!Number.isFinite(operand)) return;
-          rows.push([
-            label,
-            operation === "+"
-              ? signedEquipmentEffectText(operand, 4)
-              : `×${tooltipNumber(operand, 4)}`,
-          ]);
-        });
-      }
+      displayedWeaponModifierEffects(item?.id, filter, weaponStats).forEach((effect) => {
+        rows.push([effect.label, effect.value_text, effect.tone]);
+      });
     });
   });
   const functionModes = new Set(
@@ -15423,7 +15431,9 @@ function equipmentTooltipGroups(
     groups.push(...mascTooltipMovementGroups(item, effectiveQuirkValues));
   } else if (equipmentLimitGroup(item) === "target-computer"
     || (equipmentLimitGroup(item) === ""
-      && (isEquipmentInfoTargetComputer(item) || hasWeaponFilterFunctionMode(item)))) {
+      && (isEquipmentInfoTargetComputer(item)
+        || hasWeaponFilterFunctionMode(item)
+        || hasDisplayedWeaponModifierEffects(item)))) {
     const advancedSensorPackage = isAdvancedSensorPackage(item);
     if (advancedSensorPackage) groups.push([
       ["ZOOM LEVEL 1 BOOST", tooltipNumber(100, 0, "%")],
@@ -15435,8 +15445,11 @@ function equipmentTooltipGroups(
     ]);
     const moduleRows = [
       ["HEALTH", tooltipNumber(stats.health, 1)],
-      ["MAX EQUIPPED", tooltipNumber(stats.amountAllowed, 0)],
     ];
+    // 고정 전용 장비는 amountAllowed가 0이므로 장착 한도를 표시하지 않는다.
+    if (number(stats.amountAllowed) > 0) {
+      moduleRows.push(["MAX EQUIPPED", tooltipNumber(stats.amountAllowed, 0)]);
+    }
     if (advancedSensorPackage || isEquipmentInfoTargetComputer(item)) moduleRows.push([
       "SENSOR RANGE",
       advancedSensorPackage ? "-" : tooltipNumber(equipmentInfoModuleSensorRangeBonus(item) * 100, 2, "%"),
@@ -15595,7 +15608,7 @@ function equipmentTooltipHtml(item, ghostHeatExtra = 0) {
       <div class="equipment-tooltip-stats">
         ${groups.map((rows) => `
           <div class="equipment-tooltip-group">
-            ${rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${tooltipValueHtml(value)}</strong></div>`).join("")}
+            ${rows.map(([label, value, tone = ""]) => `<div${tone ? ` class="equipment-tooltip-toned ${tone}"` : ""}><span>${escapeHtml(label)}</span><strong>${tooltipValueHtml(value)}</strong></div>`).join("")}
           </div>
         `).join("")}
       </div>

@@ -3671,6 +3671,7 @@ test("추출된 전체 무기 스펙은 명시된 필드와 공식으로 계산�
   ));
   const weapons = equipmentData.families.weapons.map((id) => equipmentData.items[id]);
   assert.equal(weapons.length > 0, true);
+  const doubleTapWeapons = [];
 
   for (const item of weapons) {
     const stats = item.stats || {};
@@ -3711,7 +3712,25 @@ test("추출된 전체 무기 스펙은 명시된 필드와 공식으로 계산�
       true,
       `${item.name}: expected cooldown`,
     );
+
+    const shots = Math.max(0, Math.trunc(stats.ShotsDuringCooldown || 0));
+    assert.equal(api.weaponShotsDuringCooldown(item, []), shots, `${item.name}: shots during cooldown`);
+    // 시뮬레이션 무기 프로필의 doubleTapShots와 같은 값을 소비한다.
+    assert.equal(api.ultraAutoCannonJamStats(item, [], []).shots, shots, `${item.name}: jam shots`);
+    if (shots > 0) doubleTapWeapons.push(item.name);
   }
+
+  // RAC는 잼 수치가 있어도 ShotsDuringCooldown이 없으므로 더블탭 대상이 아니다.
+  assert.deepEqual(doubleTapWeapons.sort(), [
+    "ClanUltraAutoCannon10",
+    "ClanUltraAutoCannon2",
+    "ClanUltraAutoCannon20",
+    "ClanUltraAutoCannon5",
+    "UltraAutoCannon10",
+    "UltraAutoCannon2",
+    "UltraAutoCannon20",
+    "UltraAutoCannon5",
+  ]);
 
   const rockets = weapons
     .filter(api.isRocketLauncher)
@@ -3725,6 +3744,115 @@ test("추출된 전체 무기 스펙은 명시된 필드와 공식으로 계산�
     assert.equal(api.weaponVolleySize(item), item.stats.numFiring, item.name);
     assert.equal(api.weaponFiringTime(item), 0, item.name);
   }
+});
+
+test("UAC Speed Loader는 추출 데이터로 더블탭 시도 수를 늘린다", () => {
+  const equipmentData = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "equipment.json"),
+    "utf8",
+  ));
+  const loader = equipmentData.items["9035"];
+  assert.equal(loader.display_name, "UAC Speed Loader");
+  const byName = new Map(equipmentData.families.weapons
+    .map((id) => [equipmentData.items[id].name, equipmentData.items[id]]));
+
+  const targets = [
+    "UltraAutoCannon2", "UltraAutoCannon5", "UltraAutoCannon10", "UltraAutoCannon20",
+    "ClanUltraAutoCannon2", "ClanUltraAutoCannon5", "ClanUltraAutoCannon10", "ClanUltraAutoCannon20",
+  ];
+  assert.deepEqual(
+    Array.from(loader.weapon_stat_filters[0].compatible_weapons).sort(),
+    Array.from(targets).sort(),
+  );
+  for (const name of targets) {
+    const item = byName.get(name);
+    assert.equal(api.weaponShotsDuringCooldown(item, []), 1, name);
+    assert.equal(api.weaponShotsDuringCooldown(item, [loader]), 2, name);
+    assert.equal(api.ultraAutoCannonJamStats(item, [], [loader]).shots, 2, name);
+    // 다른 필드는 바뀌지 않는다.
+    const effective = api.effectiveWeaponStats(item, [loader]);
+    assert.equal(effective.numFiring, item.stats.numFiring, name);
+    closeTo(effective.cooldown, item.stats.cooldown);
+    closeTo(effective.damage, item.stats.damage);
+    // 적용 효과는 UAC Speed Loader 출처의 UAC DOUBLE TAP +1 한 줄만 만든다.
+    const sources = api.collectTargetComputerWeaponEffects(item, [loader]).sources;
+    assert.equal(sources.length, 1, name);
+    assert.equal(sources[0].display_name, "UAC Speed Loader", name);
+    assert.deepEqual(
+      Array.from(sources[0].effects, (effect) => [effect.label, effect.value_text, effect.tone]),
+      [["UAC DOUBLE TAP", "+1", "quirk-tone-ballistic"]],
+      name,
+    );
+  }
+
+  // exact match가 아닌 무기는 잼 수치가 있어도 대상이 아니며 적용 효과도 만들지 않는다.
+  for (const name of ["RotaryAutoCannon2", "RotaryAutoCannon5", "AutoCannon5", "GaussRifle"]) {
+    const item = byName.get(name);
+    assert.equal(api.weaponShotsDuringCooldown(item, [loader]), 0, name);
+    assert.equal(api.collectTargetComputerWeaponEffects(item, [loader]).sources.length, 0, name);
+  }
+
+  // 장비 자체 툴팁도 같은 필터 데이터에서 같은 표기를 만든다.
+  // 장비 툴팁 행도 발리스틱 색을 쓴다.
+  const styles = fs.readFileSync(path.join(__dirname, "..", "public", "styles.css"), "utf8");
+  assert.match(styles, /div\.equipment-tooltip-toned span[\s\S]{0,120}color: inherit;/);
+  assert.deepEqual(
+    Array.from(api.equipmentTooltipGroups(loader, 0, [], []).flat()
+      .find(([label]) => label === "UAC DOUBLE TAP")),
+    ["UAC DOUBLE TAP", "+1", "quirk-tone-ballistic"],
+  );
+  const loaderRows = Object.fromEntries(api.equipmentTooltipGroups(loader, 0, [], []).flat());
+  assert.deepEqual(loaderRows, {
+    TONS: "1",
+    SLOTS: "1",
+    HEALTH: "99999",
+    "UAC DOUBLE TAP": "+1",
+  });
+  // 무기 스탯 행으로는 시도 횟수를 넣지 않는다.
+  const uacRows = Object.fromEntries(api.equipmentTooltipGroups(byName.get("UltraAutoCannon5"), 0, [], [loader]).flat());
+  assert.equal(uacRows["UAC DOUBLE TAP"], undefined);
+
+  const uac5 = byName.get("UltraAutoCannon5");
+  const survival = 1 - uac5.stats.JammingChance;
+  const cooldown = uac5.stats.cooldown;
+  const jammed = Math.max(cooldown, uac5.stats.JammedTime);
+  assert.equal(api.weaponFiringTime(uac5, [loader]), 0);
+  closeTo(
+    api.weaponExpectedCooldown(uac5, [], []),
+    (survival * cooldown + (1 - survival) * jammed) / (1 + survival),
+  );
+  closeTo(
+    api.weaponExpectedCooldown(uac5, [], [loader]),
+    (survival ** 2 * cooldown + (1 - survival ** 2) * jammed) / (1 + survival + survival ** 2),
+  );
+  assert.ok(api.weaponExpectedCooldown(uac5, [], [loader]) < api.weaponExpectedCooldown(uac5, [], []));
+
+  // 시뮬레이션은 같은 최종값을 소비해 최대 3발을 발사한다.
+  const simulation = api.state.simulation;
+  const reset = () => {
+    simulation.pendingShots.length = 0;
+    simulation.nextFireAt.clear();
+    simulation.cooldownStartAt.clear();
+    simulation.jamStartsAt.clear();
+    simulation.jammedUntil.clear();
+  };
+  reset();
+  api.scheduleSimulationWeaponCycle({
+    key: "uac5",
+    chargeTime: 0,
+    duration: 0,
+    firingTime: 0,
+    cooldown,
+    shotCount: 1,
+    volleySize: 1,
+    eventCount: 1,
+    shotDelay: 0,
+    doubleTapShots: api.weaponShotsDuringCooldown(uac5, [loader]),
+    jam: { chance: 0, duration: uac5.stats.JammedTime },
+  }, 0);
+  assert.equal(simulation.pendingShots.length, 3);
+  assert.equal(simulation.nextFireAt.get("uac5"), cooldown * 1000);
+  reset();
 });
 
 test("빌드 집계 공식은 개별 공식과 같은 최종값을 만든다", () => {

@@ -9566,6 +9566,11 @@ body.pointer-drag-active * {
   font-size: 0.968rem;
 }
 
+.equipment-tooltip-group > div.equipment-tooltip-toned span,
+.equipment-tooltip-group > div.equipment-tooltip-toned strong {
+  color: inherit;
+}
+
 .equipment-tooltip-stats span {
   color: #e5ecee;
   font-weight: 800;
