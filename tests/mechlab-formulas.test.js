@@ -661,6 +661,71 @@ test("UM-AIV 계열의 고정 XL Gyro를 특수 장비로 판별한다", () => {
   }
 });
 
+test("고정 Hero Computer 3종을 특수 타겟컴으로 판별한다", () => {
+  const equipment = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "equipment.json"),
+    "utf8",
+  ));
+  const mechs = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "mechs.json"),
+    "utf8",
+  ));
+  const loadouts = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "loadouts.json"),
+    "utf8",
+  ));
+  const omnipods = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "omnipods.json"),
+    "utf8",
+  ));
+
+  // 판정은 고정 장비의 원본 내부 이름으로 한다.
+  const heroComputerIds = [9031, 9032, 9035];
+  assert.deepEqual(
+    heroComputerIds.map((id) => equipment.items[String(id)].name),
+    ["BaneHeroComputer", "NagaHeroComputer", "StormcrowHeroComputer"],
+  );
+  const hasFixed = (mech, itemId) => Object.values(mech.definition?.components || {})
+    .some((component) => (component.fixed || []).includes(itemId));
+  const carriers = mechs.filter((mech) => heroComputerIds.some((id) => hasFixed(mech, id)));
+  const others = mechs.filter((mech) => !heroComputerIds.some((id) => hasFixed(mech, id)));
+  assert.equal(carriers.filter((mech) => hasFixed(mech, 9035)).length, 1);
+  assert.ok(carriers.length >= 3);
+  assert.ok(others.length > 0);
+
+  const previous = {
+    equipment: api.state.equipment,
+    loadouts: api.state.loadouts,
+    omnipods: api.state.omnipods,
+    improvedJumpJetChassis: api.state.improvedJumpJetChassis,
+  };
+  try {
+    api.state.equipment = equipment;
+    api.state.loadouts = loadouts;
+    api.state.omnipods = omnipods;
+    api.state.mechSpecialFeatureCache.clear();
+    api.state.improvedJumpJetChassis = null;
+
+    carriers.forEach((mech) => {
+      assert.equal(
+        api.mechSpecialFeatures(mech).has("special-target-computer"),
+        true,
+        mech.display_name,
+      );
+    });
+    others.forEach((mech) => {
+      assert.equal(
+        api.mechSpecialFeatures(mech).has("special-target-computer"),
+        false,
+        mech.display_name,
+      );
+    });
+  } finally {
+    Object.assign(api.state, previous);
+    api.state.mechSpecialFeatureCache.clear();
+  }
+});
+
 test("공유 URL은 MWO 코드를 압축하고 기존 코드를 정확히 복원한다", async () => {
   const code = "A12?@[\\]^_`abc|def";
   const sharedUrl = new URL(await api.sharedLoadoutUrl(code));

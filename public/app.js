@@ -7380,7 +7380,9 @@ function mechSpecialFeatures(mech) {
     features.add("partial-wing");
   }
   if (fixedItemKeys.some((itemKey) => (
-    itemKey.includes("baneherocomputer") || itemKey.includes("nagaherocomputer")
+    itemKey.includes("baneherocomputer")
+    || itemKey.includes("nagaherocomputer")
+    || itemKey.includes("stormcrowherocomputer")
   ))) {
     features.add("special-target-computer");
   }

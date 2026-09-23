@@ -74,6 +74,7 @@ effective mech definition
 - 이 장비의 원본 설명은 Targeting Computer MK I 성능을 함께 낸다고 하지만 추출 데이터가 이를 뒷받침하지 않는다. Target Computer의 성능은 `ctype`이 아니라 필터가 선언하며, 실제 MK I~VIII은 모두 BeamWeapons `critChanceIncrease` + Range 배율과 ProjectileWeapons `critChanceIncrease` + `speed`를 갖는다. 9035의 필터는 ProjectileWeapons 하나뿐이고 이 값이 전혀 없다. `CTargetingComputerStats`는 Railgun Capacitor·Advanced Sensor Package·9032도 공유하는 컴포넌트 클래스일 뿐 Target Computer 성능을 뜻하지 않으며, SCR-CORLGD에 별도 Target Computer가 고정되어 있지도 않다.
 - 같은 문구를 가진 9031은 실제로 MK I과 같은 필터를 갖고 있지만(`speed`만 ×1.05로 약함) 9032는 9035처럼 문구만 있고 필터가 없다. 설명대로라면 PGI가 두 장비의 필터를 빠뜨린 것으로 보이나, 빠진 수치를 앱이 만들어 넣지 않는다. 나중에 원본에 필터가 추가되면 기존 Target Computer collector가 `critChanceIncrease`·`speed`·Range를 그대로 읽어 처리하고 센서 보너스 판정도 함께 켜지므로 코드 변경은 필요하지 않다.
 - 필터의 연산값은 장비 자체 툴팁과 대상 무기의 `적용 효과`에 `UAC DOUBLE TAP +1`로 표시하고 두 곳 모두 발리스틱 색을 사용한다. 무기 스탯 행에는 시도 횟수를 넣지 않는다.
+- 멕 필터의 특수기능 `특수 타겟컴`은 9031·9032와 함께 이 장비도 포함한다. 판정은 고정 장비의 원본 내부 이름 `StormcrowHeroComputer`로 한다.
 
 ## 6. 계산 소비 경로
 
