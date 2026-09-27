@@ -158,6 +158,57 @@ class ExtractMwoDataTests(unittest.TestCase):
         ):
             EXTRACTOR.parse_hardpoint_weapon_slots(source)
 
+    def test_hardpoint_weapon_doors_follow_weapon_doors_id(self):
+        path = "Objects/mechs/test/test-hardpoints.xml"
+        source = FakeGameData({path: b'''
+            <Hardpoints>
+              <WeaponDoorSet id="1">
+                <WeaponDoor AName="door_a" firingdelay="0.0" stayOpen="1.25" closedDamageFactor="0.8" cockpitattachment="x.cga">
+                  <Attachment AName="missile20"/>
+                </WeaponDoor>
+              </WeaponDoorSet>
+              <Hardpoint id="031" WeaponDoorsId="1" NoWeaponAName="door_a">
+                <WeaponSlot>
+                  <Attachment search="Missile20" AName="missile20"/>
+                  <Attachment search="Missile5" AName="missile5"/>
+                </WeaponSlot>
+              </Hardpoint>
+              <Hardpoint id="32"><WeaponSlot/></Hardpoint>
+            </Hardpoints>
+        '''})
+
+        weapon_doors = EXTRACTOR.parse_hardpoint_weapon_doors(source)
+        hardpoints = EXTRACTOR.apply_hardpoint_weapon_slots(
+            [{"ID": 31, "Type": 2}, {"ID": 32, "Type": 2}],
+            EXTRACTOR.parse_hardpoint_weapon_slots(source),
+            weapon_doors,
+        )
+
+        self.assertEqual(hardpoints[0]["weapon_doors"], [{
+            "AName": "door_a",
+            "closedDamageFactor": 0.8,
+            "stayOpen": 1.25,
+            "firingdelay": 0.0,
+            "attachments": ["missile20"],
+        }])
+        self.assertEqual(hardpoints[0]["weapon_slot_attachments"], [[
+            {"search": "Missile20", "AName": "missile20"},
+            {"search": "Missile5", "AName": "missile5"},
+        ]])
+        self.assertNotIn("weapon_doors", hardpoints[1])
+        self.assertNotIn("weapon_slot_attachments", hardpoints[1])
+
+    def test_hardpoint_referencing_missing_weapon_door_set_stops_extraction(self):
+        path = "Objects/mechs/test/test-hardpoints.xml"
+        source = FakeGameData({path: b'''
+            <Hardpoints>
+              <Hardpoint id="31" WeaponDoorsId="2"><WeaponSlot/></Hardpoint>
+            </Hardpoints>
+        '''})
+
+        with self.assertRaisesRegex(RuntimeError, "missing WeaponDoorSet 2"):
+            EXTRACTOR.parse_hardpoint_weapon_doors(source)
+
     def test_malformed_detailed_omnipod_source_stops_extraction(self):
         path = "Objects/mechs/test/test-omnipods.xml"
         source = FakeGameData({path: b'<OmniPods><Set name="test">'})

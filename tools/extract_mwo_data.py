@@ -22,6 +22,8 @@ HARDPOINT_TYPES = {
 COMPONENT_CAPABILITY_ATTRIBUTES = {
     "canequipecm": "CanEquipECM",
 }
+WEAPON_DOOR_ATTRIBUTES = ("AName", "closedDamageFactor", "stayOpen", "firingdelay")
+WEAPON_SLOT_ATTACHMENT_ATTRIBUTES = ("search", "AName")
 
 ITEM_FILES = [
     ("weapons", "Libs/Items/Weapons/Weapons.xml"),
@@ -645,12 +647,84 @@ def parse_hardpoint_weapon_slots(zf):
     return slot_counts
 
 
-def apply_hardpoint_weapon_slots(hardpoints, slot_counts):
+def parse_hardpoint_weapon_doors(zf):
+    weapon_doors = {}
+    for inner_path in zf.namelist():
+        if not inner_path.lower().endswith("-hardpoints.xml"):
+            continue
+        try:
+            root = parse_xml(zf.read(inner_path), inner_path)
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to parse hardpoint source {inner_path}"
+            ) from error
+        door_sets = {}
+        for door_set in root.findall("WeaponDoorSet"):
+            door_set_id = door_set.attrib.get("id")
+            if door_set_id is None:
+                continue
+            door_sets[normalize_hardpoint_id(door_set_id)] = [
+                {
+                    **{
+                        key: maybe_num(door.attrib[key])
+                        for key in WEAPON_DOOR_ATTRIBUTES
+                        if key in door.attrib
+                    },
+                    "attachments": [
+                        attachment.attrib["AName"]
+                        for attachment in door.findall("Attachment")
+                        if "AName" in attachment.attrib
+                    ],
+                }
+                for door in door_set.findall("WeaponDoor")
+            ]
+        for hardpoint in root.findall("Hardpoint"):
+            hardpoint_id = hardpoint.attrib.get("id")
+            door_set_id = hardpoint.attrib.get("WeaponDoorsId")
+            if hardpoint_id is None or door_set_id is None or str(door_set_id).strip() == "":
+                continue
+            doors = door_sets.get(normalize_hardpoint_id(door_set_id))
+            if doors is None:
+                raise RuntimeError(
+                    f"Hardpoint {hardpoint_id} in {inner_path} references missing "
+                    f"WeaponDoorSet {door_set_id}"
+                )
+            weapon_doors[normalize_hardpoint_id(hardpoint_id)] = {
+                "doors": doors,
+                "slot_attachments": [
+                    [
+                        {
+                            key: attachment.attrib[key]
+                            for key in WEAPON_SLOT_ATTACHMENT_ATTRIBUTES
+                            if key in attachment.attrib
+                        }
+                        for attachment in slot.findall("Attachment")
+                    ]
+                    for slot in hardpoint.findall("WeaponSlot")
+                ],
+            }
+    return weapon_doors
+
+
+def apply_hardpoint_weapon_slots(hardpoints, slot_counts, weapon_doors=None):
     for hardpoint in hardpoints:
         hardpoint.pop("weapon_slots", None)
-        weapon_slots = slot_counts.get(normalize_hardpoint_id(hardpoint.get("ID")))
+        hardpoint.pop("weapon_doors", None)
+        hardpoint.pop("weapon_slot_attachments", None)
+        hardpoint_id = normalize_hardpoint_id(hardpoint.get("ID"))
+        weapon_slots = slot_counts.get(hardpoint_id)
         if weapon_slots is not None:
             hardpoint["weapon_slots"] = weapon_slots
+        door_source = (weapon_doors or {}).get(hardpoint_id)
+        if door_source and door_source["doors"]:
+            hardpoint["weapon_doors"] = [
+                {**door, "attachments": list(door["attachments"])}
+                for door in door_source["doors"]
+            ]
+            hardpoint["weapon_slot_attachments"] = [
+                [dict(attachment) for attachment in slot]
+                for slot in door_source["slot_attachments"]
+            ]
     return hardpoints
 
 
@@ -666,12 +740,13 @@ def collect_hardpoint_slot_maps(game_dir: Path):
                 slot_counts = parse_hardpoint_weapon_slots(zf)
                 if not slot_counts:
                     continue
+                hardpoint_maps = (slot_counts, parse_hardpoint_weapon_doors(zf))
                 for inner_path in zf.namelist():
                     lower_path = inner_path.lower()
                     if lower_path.endswith(".mdf"):
-                        by_variant[Path(inner_path).stem.lower()] = slot_counts
+                        by_variant[Path(inner_path).stem.lower()] = hardpoint_maps
                     elif lower_path.endswith("-omnipods.xml"):
-                        by_chassis[Path(inner_path).parent.name.lower()] = slot_counts
+                        by_chassis[Path(inner_path).parent.name.lower()] = hardpoint_maps
         except zipfile.BadZipFile:
             continue
     return by_variant, by_chassis
@@ -688,13 +763,13 @@ def enrich_existing_hardpoint_data(game_dir: Path, out_dir: Path):
     by_variant, by_chassis = collect_hardpoint_slot_maps(game_dir)
 
     for mech in mechs:
-        slot_counts = by_variant.get(str(mech.get("name", "")).lower(), {})
+        slot_counts, weapon_doors = by_variant.get(str(mech.get("name", "")).lower(), ({}, {}))
         for component in mech.get("definition", {}).get("components", {}).values():
-            apply_hardpoint_weapon_slots(component.get("hardpoints", []), slot_counts)
+            apply_hardpoint_weapon_slots(component.get("hardpoints", []), slot_counts, weapon_doors)
 
     for pod in omnipods.values():
-        slot_counts = by_chassis.get(str(pod.get("chassis", "")).lower(), {})
-        apply_hardpoint_weapon_slots(pod.get("hardpoints", []), slot_counts)
+        slot_counts, weapon_doors = by_chassis.get(str(pod.get("chassis", "")).lower(), ({}, {}))
+        apply_hardpoint_weapon_slots(pod.get("hardpoints", []), slot_counts, weapon_doors)
 
     write_json(mech_path, mechs)
     write_json(omnipod_path, omnipods)
@@ -1015,7 +1090,7 @@ def parse_loadouts(
     return loadouts
 
 
-def parse_mdf(data: bytes, source: str, localization, hardpoint_slot_counts):
+def parse_mdf(data: bytes, source: str, localization, hardpoint_slot_counts, hardpoint_weapon_doors=None):
     root = parse_xml(data, source)
     mech_node = root.find("Mech")
     if mech_node is None:
@@ -1046,6 +1121,7 @@ def parse_mdf(data: bytes, source: str, localization, hardpoint_slot_counts):
             "hardpoints": apply_hardpoint_weapon_slots(
                 parse_component_hardpoints(comp),
                 hardpoint_slot_counts,
+                hardpoint_weapon_doors,
             ),
             "internals": parse_component_internals(comp),
             "fixed": parse_component_fixed(comp),
@@ -1057,7 +1133,7 @@ def parse_mdf(data: bytes, source: str, localization, hardpoint_slot_counts):
     return definition, cockpit_shake_damping
 
 
-def parse_detailed_omnipods(zf, localization, hardpoint_slot_counts):
+def parse_detailed_omnipods(zf, localization, hardpoint_slot_counts, hardpoint_weapon_doors=None):
     details = {}
     for inner_path in zf.namelist():
         if not inner_path.lower().endswith("-omnipods.xml"):
@@ -1088,6 +1164,7 @@ def parse_detailed_omnipods(zf, localization, hardpoint_slot_counts):
                     "hardpoints": apply_hardpoint_weapon_slots(
                         parse_component_hardpoints(comp),
                         hardpoint_slot_counts,
+                        hardpoint_weapon_doors,
                     ),
                     "internals": parse_component_internals(comp),
                     "fixed": parse_component_fixed(comp),
@@ -1110,10 +1187,12 @@ def parse_mech_definitions(game_dir: Path, localization):
         try:
             with zipfile.ZipFile(pak_path) as zf:
                 hardpoint_slot_counts = parse_hardpoint_weapon_slots(zf)
+                hardpoint_weapon_doors = parse_hardpoint_weapon_doors(zf)
                 omnipod_details.update(parse_detailed_omnipods(
                     zf,
                     localization,
                     hardpoint_slot_counts,
+                    hardpoint_weapon_doors,
                 ))
                 for inner_path in zf.namelist():
                     if not inner_path.lower().endswith(".mdf"):
@@ -1124,6 +1203,7 @@ def parse_mech_definitions(game_dir: Path, localization):
                             f"{pak_path.name}:{inner_path}",
                             localization,
                             hardpoint_slot_counts,
+                            hardpoint_weapon_doors,
                         )
                     except Exception as error:
                         raise RuntimeError(

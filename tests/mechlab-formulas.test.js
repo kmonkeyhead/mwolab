@@ -726,6 +726,132 @@ test("고정 Hero Computer 3종을 특수 타겟컴으로 판별한다", () => {
   }
 });
 
+test("웨펀도어는 closedDamageFactor가 1 미만일 때만 데미지 감소로 판별한다", () => {
+  const definition = (factors) => ({
+    components: {
+      right_arm: {
+        hardpoints: [{
+          ID: 31,
+          weapon_doors: factors.map((factor) => ({ AName: "door", closedDamageFactor: factor })),
+        }],
+      },
+      left_arm: { hardpoints: [{ ID: 41 }] },
+    },
+  });
+
+  assert.equal(api.hasDamageReducingWeaponDoor(definition([0.8])), true);
+  assert.equal(api.hasDamageReducingWeaponDoor(definition([0.9, 0.9])), true);
+  // 코디악처럼 도어는 있으나 배율이 1이면 제외한다.
+  assert.equal(api.hasDamageReducingWeaponDoor(definition([1])), false);
+  assert.equal(api.hasDamageReducingWeaponDoor(definition([])), false);
+  assert.equal(api.hasDamageReducingWeaponDoor({ components: { left_arm: { hardpoints: [{ ID: 41 }] } } }), false);
+});
+
+test("추출된 웨펀도어 배율로 특수 사항 웨펀도어를 판별한다", () => {
+  const readData = (file) => JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", file),
+    "utf8",
+  ));
+  const mechs = readData("mechs.json");
+  const previous = {
+    equipment: api.state.equipment,
+    loadouts: api.state.loadouts,
+    omnipods: api.state.omnipods,
+    improvedJumpJetChassis: api.state.improvedJumpJetChassis,
+  };
+  const mechByName = (displayName) => {
+    const mech = mechs.find((candidate) => candidate.display_name === displayName);
+    assert.ok(mech, displayName);
+    return mech;
+  };
+  try {
+    api.state.equipment = readData("equipment.json");
+    api.state.loadouts = readData("loadouts.json");
+    api.state.omnipods = readData("omnipods.json");
+    api.state.mechSpecialFeatureCache.clear();
+    api.state.improvedJumpJetChassis = null;
+    const hasWeaponDoor = (displayName) => api.mechSpecialFeatures(mechByName(displayName)).has("weapon-door");
+
+    ["CPLT-C1", "ARC-2R", "KGC-000", "TBR-PRIME"].forEach((displayName) => {
+      assert.equal(hasWeaponDoor(displayName), true, displayName);
+    });
+    // 옵니멕은 기본 로드아웃 무장으로 도어가 실제 적용되는 변형만 포함한다.
+    assert.equal(hasWeaponDoor("TBR-BH"), false);
+    // TBR-S는 기본 포드에 도어 하드포인트가 있으나 기본 SRM6은 도어 모델을 쓰지 않는다.
+    assert.equal(hasWeaponDoor("TBR-S"), false);
+    // 코디악은 도어 세트가 있으나 배율 1이고 하드포인트에 연결되지 않는다.
+    mechs.filter((mech) => mech.chassis === "kodiak").forEach((mech) => {
+      assert.equal(api.mechSpecialFeatures(mech).has("weapon-door"), false, mech.display_name);
+    });
+  } finally {
+    Object.assign(api.state, previous);
+    api.state.mechSpecialFeatureCache.clear();
+  }
+});
+
+test("부위 웨펀도어 아이콘은 현재 무장의 슬롯 Attachment가 도어 모델일 때만 적용한다", () => {
+  const readData = (file) => JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", file),
+    "utf8",
+  ));
+  const mechs = readData("mechs.json");
+  const previous = {
+    equipment: api.state.equipment,
+    loadouts: api.state.loadouts,
+    omnipods: api.state.omnipods,
+    selectedMech: api.state.selectedMech,
+    currentBuild: api.state.currentBuild,
+    initialFittingMode: api.state.initialFittingPreferences.mode,
+  };
+  const stockBuild = (displayName) => {
+    const mech = mechs.find((candidate) => candidate.display_name === displayName);
+    assert.ok(mech, displayName);
+    api.state.initialFittingPreferences.mode = "stock";
+    const build = api.buildForMechSelection(mech);
+    api.state.selectedMech = mech;
+    api.state.currentBuild = build;
+    return { mech, build };
+  };
+  const itemName = (itemId) => api.state.equipment.items[String(itemId)]?.name;
+  try {
+    api.state.equipment = readData("equipment.json");
+    api.state.loadouts = readData("loadouts.json");
+    api.state.omnipods = readData("omnipods.json");
+
+    // TBR-PRIME 기본 무장의 LRM20은 어깨 도어 모델을 쓴다.
+    let { mech, build } = stockBuild("TBR-PRIME");
+    let status = api.componentWeaponDoorStatus(mech, build, "right_torso");
+    assert.equal(status.reductionPercent, 10);
+    assert.equal(status.active, true);
+    assert.equal(api.componentWeaponDoorStatus(mech, build, "centre_torso"), null);
+
+    // TBR-S 기본 무장의 SRM6은 도어 모델이 아니므로 적용 무장을 안내한다.
+    ({ mech, build } = stockBuild("TBR-S"));
+    status = api.componentWeaponDoorStatus(mech, build, "right_torso");
+    assert.equal(status.active, false);
+    const required = api.weaponDoorRequiredWeapons(status, mech).weapons.map((item) => item.name);
+    assert.ok(required.includes("ClanLRM20"));
+    assert.ok(!required.includes("ClanSRM6"));
+    const tooltip = api.weaponDoorTooltipHtml("right_torso");
+    assert.match(tooltip, /tooltip-weapon-door inactive/);
+    assert.match(tooltip, /10%/);
+
+    // 무기가 없으면 미적용이며, 모든 미사일이 도어 모델을 쓰는 아처는 전체 무기로 안내한다.
+    ({ mech, build } = stockBuild("ARC-2R"));
+    assert.equal(api.componentWeaponDoorStatus(mech, build, "left_torso").active, true);
+    build.components.left_torso.items = build.components.left_torso.items
+      .filter((entry) => !["LRM20"].includes(itemName(entry.item_id)));
+    status = api.componentWeaponDoorStatus(mech, build, "left_torso");
+    assert.equal(status.reductionPercent, 20);
+    assert.equal(status.active, false);
+    assert.equal(api.weaponDoorRequiredWeapons(status, mech).allWeapons, true);
+  } finally {
+    api.state.initialFittingPreferences.mode = previous.initialFittingMode;
+    delete previous.initialFittingMode;
+    Object.assign(api.state, previous);
+  }
+});
+
 test("공유 URL은 MWO 코드를 압축하고 기존 코드를 정확히 복원한다", async () => {
   const code = "A12?@[\\]^_`abc|def";
   const sharedUrl = new URL(await api.sharedLoadoutUrl(code));

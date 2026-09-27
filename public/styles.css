@@ -8455,10 +8455,56 @@ body.weapon-detail-open {
 }
 
 .component-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   color: #d7e2e5;
   font-size: 0.86rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.weapon-door-indicator {
+  display: grid;
+  flex: 0 0 auto;
+  width: 1.3rem;
+  height: 1.2rem;
+  margin: 0;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #45da86;
+  border-radius: 3px;
+  background: #13291c;
+  box-shadow: inset 0 0 0 1px #45da8624;
+  color: #8ff0b8;
+  cursor: help;
+}
+
+.weapon-door-indicator svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: currentColor;
+}
+
+.weapon-door-indicator.inactive {
+  border-color: #ff5f5f;
+  background: #301416;
+  box-shadow: inset 0 0 0 1px #ff5f5f24;
+  color: #ffabab;
+}
+
+.weapon-door-indicator:hover,
+.weapon-door-indicator:focus-visible {
+  border-color: #b8f7d2;
+  background: #1b3a28;
+  color: #fff;
+  outline: none;
+}
+
+.weapon-door-indicator.inactive:hover,
+.weapon-door-indicator.inactive:focus-visible {
+  border-color: #ffc9c9;
+  background: #48191c;
 }
 
 .component-stat-title {
@@ -9503,6 +9549,53 @@ body.pointer-drag-active * {
   --tooltip-accent: #ff8d5c;
   width: max-content;
   min-width: 100%;
+}
+
+.equipment-tooltip-card.tooltip-weapon-door {
+  --tooltip-accent: #45da86;
+}
+
+.equipment-tooltip-card.tooltip-weapon-door.inactive {
+  --tooltip-accent: #ff5f5f;
+}
+
+.weapon-door-tooltip-lines {
+  display: grid;
+  gap: 0.45rem;
+  max-width: 26rem;
+  padding: 0.75rem;
+}
+
+.weapon-door-tooltip-lines p {
+  margin: 0;
+  color: #e7edef;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.weapon-door-percent {
+  color: #8ff0b8;
+  font-weight: 900;
+}
+
+.weapon-door-inactive {
+  color: #ffabab !important;
+  font-weight: 700;
+}
+
+.weapon-door-required {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.weapon-door-required span {
+  color: #aebdc2;
+  font-size: 0.72rem;
+}
+
+.weapon-door-required strong {
+  color: #f0f5f6;
+  font-weight: 700;
 }
 
 .ghost-heat-warning-tooltip-lines {

@@ -270,6 +270,12 @@ const TEXT = {
     "mechlab.ghostHeatWarning": "고스트 힛 발생 가능",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
     "mechlab.ghostHeatWarningLine": "{weapons} : 발열 {percent} (최종: {totalHeat}, 고스트 힛: {ghostHeat})",
+    "mechlab.weaponDoor": "웨펀도어 데미지 감소",
+    "mechlab.weaponDoorTitle": "WEAPON DOOR",
+    "mechlab.weaponDoorReduction": "데미지 {percent} 감소",
+    "mechlab.weaponDoorInactive": "현재 무장으로는 적용되지 않습니다.",
+    "mechlab.weaponDoorRequired": "적용 무장",
+    "mechlab.weaponDoorAllWeapons": "모든 {type} 무기",
     "weaponDetail.open": "자세히",
     "recommendations.title": "추천 핏팅",
     "recommendations.apply": "적용",
@@ -417,6 +423,7 @@ const TEXT = {
     "filters.improvedJumpJets": "강화된 점프젯",
     "filters.partialWing": "Partial Wing 점프젯",
     "filters.specialTargetComputer": "특수 타겟컴",
+    "filters.weaponDoor": "웨펀도어",
     "filters.noJumpShakeDescription": "점프젯 사용 중 화면 흔들림이 없습니다.",
     "filters.jamImmuneDescription": "잼 확률 감소 100%",
     "filters.fallResistantDescription": "낙하 데미지 감소 50% 이상",
@@ -434,6 +441,7 @@ const TEXT = {
     "filters.improvedJumpJetsDescription": "IMPROVED JUMPJET 옵니포드를 사용하는 점프젯",
     "filters.partialWingDescription": "글라이딩 효과가 있는 점프젯",
     "filters.specialTargetComputerDescription": "무기 작동 방식 변경",
+    "filters.weaponDoorDescription": "데미지 감소 보유",
     "filters.faction": "진영",
     "filters.weightClass": "체급",
     "filters.mechType": "멕 종류",
@@ -913,6 +921,12 @@ const TEXT = {
     "mechlab.ghostHeatWarning": "Ghost heat possible",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
     "mechlab.ghostHeatWarningLine": "{weapons}: heat {percent} (final: {totalHeat}, ghost heat: {ghostHeat})",
+    "mechlab.weaponDoor": "Weapon door damage reduction",
+    "mechlab.weaponDoorTitle": "WEAPON DOOR",
+    "mechlab.weaponDoorReduction": "Damage reduced by {percent}",
+    "mechlab.weaponDoorInactive": "Not active with the current weapons.",
+    "mechlab.weaponDoorRequired": "Required weapons",
+    "mechlab.weaponDoorAllWeapons": "Any {type} weapon",
     "weaponDetail.open": "Details",
     "recommendations.title": "Recommended fittings",
     "recommendations.apply": "Apply",
@@ -1060,6 +1074,7 @@ const TEXT = {
     "filters.improvedJumpJets": "Improved jump jets",
     "filters.partialWing": "Partial Wing jump jets",
     "filters.specialTargetComputer": "Special targeting computer",
+    "filters.weaponDoor": "Weapon doors",
     "filters.noJumpShakeDescription": "Removes screen shake while using jump jets.",
     "filters.jamImmuneDescription": "100% jam-chance reduction",
     "filters.fallResistantDescription": "At least 50% fall-damage reduction",
@@ -1077,6 +1092,7 @@ const TEXT = {
     "filters.improvedJumpJetsDescription": "Jump jets provided by an IMPROVED JUMPJET omnipod",
     "filters.partialWingDescription": "Jump jets with a gliding effect",
     "filters.specialTargetComputerDescription": "Changes weapon behavior",
+    "filters.weaponDoorDescription": "Has damage reduction",
     "filters.faction": "Faction",
     "filters.weightClass": "Weight class",
     "filters.mechType": "Mech type",
@@ -1858,6 +1874,7 @@ const MECH_SPECIAL_TRAIT_ORDER = [
   "jam-immune",
   "fall-resistant",
   "crit-immune",
+  "weapon-door",
 ];
 const MECH_SPECIAL_EQUIPMENT_ORDER = [
   "compact-gyro",
@@ -7290,6 +7307,122 @@ function improvedJumpJetChassis() {
   return chassis;
 }
 
+// 원본 closedDamageFactor가 1 미만인 웨펀도어만 데미지 감소로 본다.
+function damageReducingWeaponDoors(hardpoint) {
+  return (hardpoint?.weapon_doors || []).filter((door) => {
+    const factor = Number(door?.closedDamageFactor);
+    return Number.isFinite(factor) && factor < 1;
+  });
+}
+
+function hasDamageReducingWeaponDoor(definition) {
+  return Object.values(definition.components || {}).some((component) => (
+    (component.hardpoints || []).some((hardpoint) => damageReducingWeaponDoors(hardpoint).length > 0)
+  ));
+}
+
+function weaponAliasKeys(item) {
+  return new Set(String(item?.aliases || "")
+    .split(",")
+    .map((alias) => alias.trim().toLowerCase())
+    .filter(Boolean));
+}
+
+// 슬롯 XML의 Attachment 순서상 무기 aliases와 처음 일치하는 search의 장착 모델을 쓴다.
+function weaponSlotAttachmentName(slotAttachments, aliasKeys) {
+  const match = (slotAttachments || []).find((attachment) => (
+    aliasKeys.has(String(attachment?.search || "").trim().toLowerCase())
+  ));
+  return match?.AName || "";
+}
+
+// 무기가 도어 하드포인트의 어느 슬롯에서든 도어 Attachment 목록의 모델을 쓰면 적용한다.
+function weaponUsesWeaponDoor(hardpoint, item) {
+  if (item?.item_type !== "weapon" || equipmentHardpointType(item) !== hardpointType(hardpoint)) return false;
+  const doorModels = new Set(damageReducingWeaponDoors(hardpoint).flatMap((door) => door.attachments || []));
+  const aliasKeys = weaponAliasKeys(item);
+  return (hardpoint.weapon_slot_attachments || []).some((slotAttachments) => {
+    const modelName = weaponSlotAttachmentName(slotAttachments, aliasKeys);
+    return Boolean(modelName) && doorModels.has(modelName);
+  });
+}
+
+function componentWeaponDoorStatus(mech, build, componentName) {
+  if (!mech || !build) return null;
+  const compDef = effectiveComponentDefinition(mech, build, componentName);
+  const doorHardpoints = (compDef.hardpoints || [])
+    .filter((hardpoint) => damageReducingWeaponDoors(hardpoint).length > 0);
+  if (!doorHardpoints.length) return null;
+  const factor = Math.min(...doorHardpoints.flatMap((hardpoint) => (
+    damageReducingWeaponDoors(hardpoint).map((door) => Number(door.closedDamageFactor))
+  )));
+  const weapons = [
+    ...(build.components?.[componentName]?.items || []).map((entry) => itemById(entry.item_id)),
+    ...(compDef.fixed || []).map((itemId) => itemById(itemId)),
+  ].filter((item) => item?.item_type === "weapon");
+  return {
+    componentName,
+    doorHardpoints,
+    reductionPercent: Math.round((1 - factor) * 1000) / 10,
+    active: weapons.some((item) => doorHardpoints.some((hardpoint) => weaponUsesWeaponDoor(hardpoint, item))),
+  };
+}
+
+function weaponDoorRequiredWeapons(status, mech = state.selectedMech) {
+  const types = [...new Set(status.doorHardpoints.map(hardpointType))];
+  const candidates = (state.equipment?.families?.weapons || [])
+    .map((itemId) => itemById(itemId))
+    .filter((item) => (
+      item?.item_type === "weapon"
+      && types.includes(equipmentHardpointType(item))
+      && !isHiddenMechlabEquipment(item)
+      && itemMatchesMechFaction(item, mech)
+      && !guidanceMismatch(item)
+    ));
+  const matching = candidates.filter((item) => (
+    status.doorHardpoints.some((hardpoint) => weaponUsesWeaponDoor(hardpoint, item))
+  ));
+  return {
+    types,
+    weapons: matching,
+    allWeapons: matching.length > 0 && matching.length === candidates.length,
+  };
+}
+
+function weaponDoorIndicatorHtml(status) {
+  if (!status) return "";
+  const label = `${t("mechlab.weaponDoor")} ${status.reductionPercent}%`;
+  return `<button class="weapon-door-indicator${status.active ? "" : " inactive"}" type="button" data-weapon-door="${escapeHtml(status.componentName)}" aria-label="${escapeHtml(label)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6.1c0 5 3.4 9.6 8 10.9 4.6-1.3 8-5.9 8-10.9V5l-8-3Z"/></svg></button>`;
+}
+
+function weaponDoorTooltipHtml(componentName) {
+  const status = componentWeaponDoorStatus(state.selectedMech, state.currentBuild, componentName);
+  if (!status) return "";
+  const percentMarker = "__WEAPON_DOOR_PERCENT__";
+  const reduction = escapeHtml(t("mechlab.weaponDoorReduction", { percent: percentMarker }))
+    .replace(percentMarker, `<strong class="weapon-door-percent">${escapeHtml(`${status.reductionPercent}%`)}</strong>`);
+  let requirement = "";
+  if (!status.active) {
+    const required = weaponDoorRequiredWeapons(status);
+    const weaponText = required.allWeapons
+      ? required.types.map((type) => t("mechlab.weaponDoorAllWeapons", { type: hardpointFilterTypeLabel(type) })).join(", ")
+      : [...new Set(required.weapons.map((item) => item.display_name || item.name))].join(", ");
+    requirement = `
+      <p class="weapon-door-inactive">${escapeHtml(t("mechlab.weaponDoorInactive"))}</p>
+      <p class="weapon-door-required"><span>${escapeHtml(t("mechlab.weaponDoorRequired"))}</span><strong>${escapeHtml(weaponText || "-")}</strong></p>
+    `;
+  }
+  return `
+    <div class="equipment-tooltip-card tooltip-weapon-door${status.active ? "" : " inactive"}">
+      <div class="equipment-tooltip-title">${escapeHtml(t("mechlab.weaponDoorTitle"))}</div>
+      <div class="weapon-door-tooltip-lines">
+        <p>${reduction}</p>
+        ${requirement}
+      </div>
+    </div>
+  `;
+}
+
 function mechSpecialFeatures(mech) {
   const key = String(mech?.id || "");
   if (!key) return new Set();
@@ -7385,6 +7518,13 @@ function mechSpecialFeatures(mech) {
     || itemKey.includes("stormcrowherocomputer")
   ))) {
     features.add("special-target-computer");
+  }
+  // 옵니멕은 기본 로드아웃의 장착 무장으로 도어가 실제 적용되는 변형만 포함한다.
+  const hasWeaponDoor = hasFixedOmnipods(mech)
+    ? COMPONENT_ORDER.some((component) => componentWeaponDoorStatus(mech, build, component)?.active)
+    : hasDamageReducingWeaponDoor(activeDefinition);
+  if (hasWeaponDoor) {
+    features.add("weapon-door");
   }
 
   state.mechSpecialFeatureCache.set(key, features);
@@ -12773,6 +12913,9 @@ function renderComponent(name, calc, quirkValues, ghostHeatGroups = new Set()) {
     Math.max(0, number(capacity) - number(usage.hardpoints?.[type])),
   ]));
   const hps = renderHardpointBadges(remainingHardpoints, "component-hardpoint", true);
+  const weaponDoorIndicator = weaponDoorIndicatorHtml(
+    componentWeaponDoorStatus(state.selectedMech, state.currentBuild, name),
+  );
   const currentOmnipod = hasFixedOmnipods(state.selectedMech) ? podById(buildComp.omnipod) : null;
   const omnipodName = currentOmnipod
     ? String(currentOmnipod.set || "OMNIPOD").toUpperCase()
@@ -12830,7 +12973,7 @@ function renderComponent(name, calc, quirkValues, ghostHeatGroups = new Set()) {
     <article class="component component-location-${name} ${usage.warnings.length ? "invalid" : ""}" data-component-drop="${name}">
         <div class="component-head">
           <div>
-            <div class="component-title">${MECHLAB_COMPONENT_NAMES[name] || name}</div>
+            <div class="component-title"><span>${MECHLAB_COMPONENT_NAMES[name] || name}</span>${weaponDoorIndicator}</div>
             <div class="component-stat-title">ARMOR${globalThis.__MWOLAB_MOBILE__ ? ` <span class="mobile-component-armor-summary">${fmt(frontArmor + rearArmor)}/${fmt(armorCapacity)}</span>` : ""}</div>
             <div class="component-armor-controls">${armorControls}</div>
             <div class="component-structure-row">
@@ -15685,15 +15828,17 @@ function showEquipmentTooltip(target) {
   const item = equipmentTooltipItem(target);
   const omnipod = equipmentTooltipOmnipod(target);
   const ghostHeatWarning = target?.dataset.ghostHeatWarning !== undefined;
+  const weaponDoorComponent = target?.dataset.weaponDoor || "";
+  const weaponDoorHtml = weaponDoorComponent ? weaponDoorTooltipHtml(weaponDoorComponent) : "";
   const tooltip = $("equipment-tooltip");
-  if ((!item && !omnipod && !ghostHeatWarning) || !tooltip) return;
+  if ((!item && !omnipod && !ghostHeatWarning && !weaponDoorHtml) || !tooltip) return;
   activeEquipmentTooltipTarget = target;
   const ghostHeatExtra = item && target.classList.contains("ghost-heat-triggered")
     ? mechlabGhostHeatWarnings().find(({ groupKey }) => groupKey === ghostHeatGroupKey(item))?.extraHeat || 0
     : 0;
-  tooltip.innerHTML = ghostHeatWarning
+  tooltip.innerHTML = weaponDoorHtml || (ghostHeatWarning
     ? ghostHeatWarningTooltipHtml()
-    : omnipod ? omnipodTooltipHtml(omnipod) : equipmentTooltipHtml(item, ghostHeatExtra);
+    : omnipod ? omnipodTooltipHtml(omnipod) : equipmentTooltipHtml(item, ghostHeatExtra));
   tooltip.classList.toggle("ghost-heat-tooltip-open", ghostHeatWarning);
   tooltip.hidden = false;
   positionEquipmentTooltip(target);
@@ -16522,7 +16667,7 @@ function bindEvents() {
     event.preventDefault();
     changeLanguage(language);
   });
-  const tooltipSelector = "[data-item], [data-tooltip-item], [data-loadout-item], [data-engine-heat-sink-item], [data-omnipod], [data-tooltip-omnipod], [data-ghost-heat-warning]";
+  const tooltipSelector = "[data-item], [data-tooltip-item], [data-loadout-item], [data-engine-heat-sink-item], [data-omnipod], [data-tooltip-omnipod], [data-ghost-heat-warning], [data-weapon-door]";
   if (!globalThis.__MWOLAB_MOBILE__) {
     document.addEventListener("pointerover", (event) => {
       const target = event.target.closest(tooltipSelector);
@@ -18076,6 +18221,10 @@ if (globalThis.__MWOLAB_TEST__) {
     stripBuildEquipment,
     maximizeBuildArmor,
     mechSpecialFeatures,
+    hasDamageReducingWeaponDoor,
+    componentWeaponDoorStatus,
+    weaponDoorRequiredWeapons,
+    weaponDoorTooltipHtml,
     mechMatchesQuirkFilters,
     normalizeMechHardpointFilterMinimum,
     calculateBuild,

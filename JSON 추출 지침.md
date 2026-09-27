@@ -48,6 +48,7 @@
 - ECM 장착 능력은 일반 멕 MDF의 `ComponentList/Component`와 상세 옴니포드 XML의 `Set/component`에 명시된 `CanEquipECM`을 해당 컴포넌트에 보존한다. 원본 속성명은 대소문자를 무시해 읽고 생성 JSON에서는 `CanEquipECM`으로 정규화한다. 멕 최상위 속성과 컴포넌트 속성을 서로 대신 사용하지 않으며, 원본에 없는 능력을 기본 로드아웃의 ECM 장비로 만들지 않는다.
 - 일반 및 옴니포드 무기 용량은 각 섀시 아카이브의 `*-hardpoints.xml`에서 가져온다. MDF 또는 옴니포드의 하드포인트 `ID`를 `<Hardpoint id="...">`와 연결하고 직접 자식 `<WeaponSlot>`의 개수를 `weapon_slots`에 저장한다.
 - 선행 0이 있는 숫자 ID도 같게 비교되도록 하드포인트 ID를 정규화한다. 예를 들어 XML ID `"02"`는 MDF 또는 옴니포드 ID `2`와 일치해야 하며 원시 문자열을 그대로 비교하지 않는다.
+- 웨펀도어는 같은 `*-hardpoints.xml`의 `<Hardpoint WeaponDoorsId>`를 `<WeaponDoorSet id>`에 연결해 하드포인트의 `weapon_doors`에 각 `WeaponDoor`의 원본 `AName`, `closedDamageFactor`, `stayOpen`, `firingdelay`와 도어의 `<Attachment AName>` 목록 `attachments`를 보존한다. 도어 하드포인트에는 각 `<WeaponSlot>`의 `<Attachment>` 순서를 유지한 `search`·`AName` 목록을 `weapon_slot_attachments`로 함께 보존한다. ID는 하드포인트 ID와 같은 방식으로 정규화하고, 존재하지 않는 세트를 참조하면 추출을 중단한다. 도어 배율을 섀시 이름이나 도어 모델명으로 추정하지 않는다.
 - MDF 하드포인트의 `Slots` 속성은 장착 가능한 무기 개수가 아니다. 하드포인트 용량으로 사용하지 않는다. 예를 들어 MDF `Slots="10"`이 `<WeaponSlot>` 세 개에 대응할 수 있다.
 - 최대 하드포인트 용량을 기본 로드아웃에서 추론하지 않는다. 기본 장비는 현재 장착된 무기를 나타내며 섀시가 장착할 수 있는 전체 무기 수가 아니다.
 - 앱의 하드포인트 개수, 피팅 제한, 컴포넌트 배지, 멕 목록 배지, 통계는 `hardpoint.weapon_slots`를 사용한다. 섀시 하드포인트 매핑에 실제로 대응 항목이 없을 때만 1을 대체값으로 사용한다.
