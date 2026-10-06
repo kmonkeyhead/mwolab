@@ -373,6 +373,115 @@ test("장비 툴팁 적용 효과 설정은 기본 ON이며 저장값을 복원�
   assert.equal(loadMechLab({ storageReadError: true }).state.showWeaponTooltipQuirks, true);
 });
 
+test("장비 툴팁은 추출된 장비 HP와 미사일당 HP를 구분해 표시한다", () => {
+  const tooltipApi = loadMechLab();
+  const equipmentData = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "equipment.json"),
+    "utf8",
+  ));
+  tooltipApi.state.equipment = equipmentData;
+  for (const item of Object.values(equipmentData.items)) {
+    const health = item.stats?.Health ?? item.stats?.health;
+    const rows = tooltipApi.equipmentTooltipGroups(item, 0, [], []).flat();
+    const hpRows = rows.filter(([label]) => label === "HP");
+    assert.equal(rows.some(([label]) => label === "HEALTH"), false, item.name);
+    if (Number.isFinite(health)) {
+      assert.equal(hpRows.length, 1, item.name);
+      assert.equal(rows.at(-1)[0], "HP", item.name);
+      assert.equal(Number(hpRows[0][1]), health, item.name);
+    } else {
+      assert.equal(hpRows.length, 0, item.name);
+    }
+    const missileHpRows = rows.filter(([label]) => label === "MISSILE HP");
+    const isMissile = item.item_type === "weapon"
+      && String(item.hardpoint_type || item.stats?.type || "").toLowerCase() === "missile";
+    if (isMissile && Number.isFinite(item.stats?.projectileHealth)) {
+      assert.equal(missileHpRows.length, 1, item.name);
+      assert.equal(Number(missileHpRows[0][1]), item.stats.projectileHealth, item.name);
+      assert.deepEqual(Array.from(rows.at(-2)), Array.from(missileHpRows[0]), item.name);
+    } else {
+      assert.equal(missileHpRows.length, 0, item.name);
+    }
+  }
+});
+
+test("장비 HP는 명시된 0과 소수·큰 값을 보존하고 누락·빈값·비수치를 숨긴다", () => {
+  const tooltipApi = loadMechLab();
+  for (const field of ["Health", "health"]) {
+    for (const [value, expected] of [[0, "0"], [7.5, "7.5"], [99999, "99999"]]) {
+      const rows = tooltipApi.equipmentTooltipGroups({
+        item_type: "module", name: "TestModule", stats: { [field]: value },
+      }, 0, [], []).flat();
+      assert.deepEqual(Array.from(rows.at(-1)), ["HP", expected]);
+    }
+    for (const value of [undefined, null, "", " ", "unknown", NaN, Infinity]) {
+      const rows = tooltipApi.equipmentTooltipGroups({
+        item_type: "module", name: "TestModule", stats: { [field]: value },
+      }, 0, [], []).flat();
+      assert.equal(rows.some(([label]) => label === "HP"), false, `${field}: ${value}`);
+    }
+  }
+  const projectileOnly = weapon({ stats: { projectileHealth: 25, hitpoints: 1 } });
+  assert.equal(
+    tooltipApi.equipmentTooltipGroups(projectileOnly, 0, [], []).flat()
+      .some(([label]) => label === "HP"),
+    false,
+  );
+});
+
+test("미사일당 HP는 원본 숫자와 두 자리 소수를 보존하고 미사일 무기에만 표시한다", () => {
+  const tooltipApi = loadMechLab();
+  for (const [value, expected] of [[0, "0"], [1.35, "1.35"], [25, "25"]]) {
+    const item = weapon({ hardpoint_type: "MISSILE", stats: { Health: 16, projectileHealth: value } });
+    const rows = tooltipApi.equipmentTooltipGroups(item, 0, [], []).flat();
+    assert.deepEqual(Array.from(rows.at(-2)), ["MISSILE HP", expected]);
+    assert.deepEqual(Array.from(rows.at(-1)), ["HP", "16"]);
+    assert.match(tooltipApi.equipmentTooltipHtml(item), new RegExp(`<span>MISSILE HP</span><strong>${expected.replace(".", "\\.")}</strong>`));
+  }
+  for (const value of [undefined, null, "", " ", "unknown", NaN, Infinity]) {
+    const item = weapon({ hardpoint_type: "missile", stats: { Health: 16, projectileHealth: value, hitpoints: 1 } });
+    const rows = tooltipApi.equipmentTooltipGroups(item, 0, [], []).flat();
+    assert.equal(rows.some(([label]) => label === "MISSILE HP"), false, String(value));
+    assert.deepEqual(Array.from(rows.at(-1)), ["HP", "16"]);
+  }
+  for (const item of [
+    weapon({ hardpoint_type: "energy", stats: { projectileHealth: 1.35 } }),
+    { item_type: "ammo", hardpoint_type: "missile", stats: { projectileHealth: 1.35 } },
+  ]) {
+    assert.equal(
+      tooltipApi.equipmentTooltipGroups(item, 0, [], []).flat().some(([label]) => label === "MISSILE HP"),
+      false,
+    );
+  }
+  const projectileOnly = weapon({ hardpoint_type: "", stats: { type: "Missile", projectileHealth: 1.35 } });
+  assert.deepEqual(
+    Array.from(tooltipApi.equipmentTooltipGroups(projectileOnly, 0, [], []).flat().at(-1)),
+    ["MISSILE HP", "1.35"],
+  );
+});
+
+test("장비 HP 수치 그룹은 적용 효과와 설명 앞에 렌더링한다", () => {
+  const tooltipApi = loadMechLab();
+  const item = {
+    item_type: "jumpjet",
+    name: "TestJumpJet",
+    description: "Jump jet HP test description",
+    stats: { health: 7.5, duration: 5, boost_instant: 200 },
+  };
+  tooltipApi.state.selectedMech = {
+    id: 1,
+    definition: { quirks: [quirk("jumpjets_burntime_multiplier", 0.1)] },
+  };
+  const html = tooltipApi.equipmentTooltipHtml(item);
+  const hpIndex = html.indexOf("<span>HP</span><strong>7.5</strong>");
+  const effectsIndex = html.indexOf('<section class="equipment-tooltip-effects">');
+  const descriptionIndex = html.indexOf("<p>Jump jet HP test description</p>");
+  assert.ok(hpIndex >= 0);
+  assert.ok(effectsIndex > hpIndex);
+  assert.ok(descriptionIndex > effectsIndex);
+  assert.equal((html.match(/<span>HP<\/span>/g) || []).length, 1);
+});
+
 test("개인설정 초기 피팅은 장비 제거·풀아머 기본값과 저장 복원·부위 한도를 유지한다", () => {
   const key = "mwolab:initial-fitting:v1";
   const writes = [];
@@ -3996,8 +4105,8 @@ test("UAC Speed Loader는 추출 데이터로 더블탭 시도 수를 늘린다"
   assert.deepEqual(loaderRows, {
     TONS: "1",
     SLOTS: "1",
-    HEALTH: "99999",
     "UAC DOUBLE TAP": "+1",
+    HP: "99999",
   });
   // 무기 스탯 행으로는 시도 횟수를 넣지 않는다.
   const uacRows = Object.fromEntries(api.equipmentTooltipGroups(byName.get("UltraAutoCannon5"), 0, [], [loader]).flat());

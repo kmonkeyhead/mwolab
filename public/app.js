@@ -15588,9 +15588,7 @@ function equipmentTooltipGroups(
       ["TARGETING GAIN TIME BOOST", tooltipNumber(42.5, 1, "%")],
       ...targetComputerTooltipRows(item),
     ]);
-    const moduleRows = [
-      ["HEALTH", tooltipNumber(stats.health, 1)],
-    ];
+    const moduleRows = [];
     // 고정 전용 장비는 amountAllowed가 0이므로 장착 한도를 표시하지 않는다.
     if (number(stats.amountAllowed) > 0) {
       moduleRows.push(["MAX EQUIPPED", tooltipNumber(stats.amountAllowed, 0)]);
@@ -15611,10 +15609,16 @@ function equipmentTooltipGroups(
   } else {
     const detailRows = [];
     if (number(stats.range) > 0) detailRows.push(["RANGE", tooltipNumber(stats.range, 0, " m")]);
-    if (number(stats.health) > 0) detailRows.push(["HEALTH", tooltipNumber(stats.health, 1)]);
     if (number(stats.amountAllowed) > 0) detailRows.push(["MAX EQUIPPED", tooltipNumber(stats.amountAllowed, 0)]);
     groups.push(detailRows);
   }
+  const healthRows = [];
+  if (equipmentHardpointType(item) === "missile" && Number.isFinite(stats.projectileHealth)) {
+    healthRows.push(["MISSILE HP", tooltipNumber(stats.projectileHealth, 2)]);
+  }
+  const health = stats.Health ?? stats.health;
+  if (Number.isFinite(health)) healthRows.push(["HP", tooltipNumber(health, 1)]);
+  groups.push(healthRows);
   return groups
     .map((rows) => rows.filter(([, value]) => value !== "-"))
     .filter((rows) => rows.length);
