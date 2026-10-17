@@ -276,6 +276,7 @@ const TEXT = {
     "mechlab.weaponDoorInactive": "현재 무장으로는 적용되지 않습니다.",
     "mechlab.weaponDoorRequired": "적용 무장",
     "mechlab.weaponDoorAllWeapons": "모든 {type} 무기",
+    "mechlab.omnipodFixedEquipment": "FIXED EQUIPMENT",
     "weaponDetail.open": "자세히",
     "recommendations.title": "추천 핏팅",
     "recommendations.apply": "적용",
@@ -587,6 +588,7 @@ const TEXT = {
     "info.combinedDurability": "종합 내구",
     "info.durabilitySummary": "내구도 요약",
     "info.mobility": "기동성",
+    "info.fixedEquipment": "FIXED EQUIPMENT",
     "info.structureInfo": "스트럭쳐 정보",
     "info.armorInfo": "아머 정보",
     "info.engine": "엔진",
@@ -927,6 +929,7 @@ const TEXT = {
     "mechlab.weaponDoorInactive": "Not active with the current weapons.",
     "mechlab.weaponDoorRequired": "Required weapons",
     "mechlab.weaponDoorAllWeapons": "Any {type} weapon",
+    "mechlab.omnipodFixedEquipment": "FIXED EQUIPMENT",
     "weaponDetail.open": "Details",
     "recommendations.title": "Recommended fittings",
     "recommendations.apply": "Apply",
@@ -1238,6 +1241,7 @@ const TEXT = {
     "info.combinedDurability": "Combined Durability",
     "info.durabilitySummary": "Durability Summary",
     "info.mobility": "Mobility",
+    "info.fixedEquipment": "FIXED EQUIPMENT",
     "info.structureInfo": "Structure Info",
     "info.armorInfo": "Armor Info",
     "info.engine": "Engine",
@@ -8241,6 +8245,7 @@ function renderMechBrowserPreview() {
       [t("info.angleX"), specAnglePair(movement.baseAngleX[0], movement.angleX[0], movement.angleX[1], "X", 1, true)],
       [t("info.angleY"), specAnglePair(movement.baseAngleY[0], movement.angleY[0], movement.angleY[1], "Y", 1, true)],
     ], "mech-browser-preview-mobility")}
+    ${renderMechBrowserFixedEquipment(mech, data.build)}
     <div class="mech-browser-preview-quirks">
       ${renderMechSummaryQuirks(data.quirks, mech, data.build)}
     </div>
@@ -15662,6 +15667,77 @@ function omnipodTooltipQuirkRows(quirks, inactive = false) {
   `).join("");
 }
 
+function omnipodTooltipMech(pod) {
+  if (!pod?.component) return null;
+  const ownsPod = (mech) => String(currentDefinition(mech).components?.[pod.component]?.omnipod) === String(pod.id);
+  const selected = state.selectedMech;
+  // 중앙 몸통 포드는 배리언트에 고정되므로 그 포드를 쓰는 멕을, 나머지는 같은 섀시의 현재 멕을 기준으로 한다.
+  if (selected && (pod.component === "centre_torso" ? ownsPod(selected) : selected.chassis === pod.chassis)) return selected;
+  return state.mechs.find(ownsPod) || null;
+}
+
+function isComponentFixedEquipment(itemId) {
+  const item = itemById(itemId);
+  return isHeatSink(item) || item?.item_type === "jumpjet";
+}
+
+function omnipodFixedEquipmentIds(pod) {
+  const mechComponents = currentDefinition(omnipodTooltipMech(pod)).components || {};
+  // 멕 정의의 히트싱크·점프젯은 달린 부위 포드에, 나머지 멕 고정 장비는 중앙 몸통 포드에 표시한다.
+  const mechFixed = pod?.component === "centre_torso"
+    ? Object.entries(mechComponents).flatMap(([componentName, component]) => (component.fixed || [])
+      .filter((itemId) => componentName === "centre_torso" || !isComponentFixedEquipment(itemId)))
+    : (mechComponents[pod?.component]?.fixed || []).filter(isComponentFixedEquipment);
+  return [...(pod?.fixed || []), ...mechFixed].filter((itemId) => itemById(itemId)?.item_type !== "engine");
+}
+
+function fixedEquipmentRowsHtml(itemIds) {
+  const counts = new Map();
+  itemIds.forEach((itemId) => counts.set(String(itemId), (counts.get(String(itemId)) || 0) + 1));
+  if (!counts.size) return "";
+  const rows = [...counts].map(([itemId, count]) => {
+    const item = itemById(itemId);
+    const name = item?.display_name || item?.name || itemId;
+    const mountType = equipmentHardpointType(item);
+    const mark = HARDPOINT_LABELS[mountType] || String(item?.item_type || "?")[0].toUpperCase();
+    return `
+      <div class="item-row fixed-equipment-row ${mountType || item?.item_type || ""}">
+        <span class="item-row-name"><span class="item-type-mark">${escapeHtml(mark)}</span><strong>${escapeHtml(name)}</strong></span>
+        <span>×${count}</span>
+      </div>
+    `;
+  }).join("");
+  return `<div class="fixed-equipment-rows">${rows}</div>`;
+}
+
+function omnipodTooltipEquipmentSection(itemIds) {
+  const rows = fixedEquipmentRowsHtml(itemIds);
+  if (!rows) return "";
+  return `
+    <div class="omnipod-tooltip-section">
+      <div class="omnipod-tooltip-section-title">${escapeHtml(t("mechlab.omnipodFixedEquipment"))}</div>
+      ${rows}
+    </div>
+  `;
+}
+
+function mechFixedEquipmentIds(mech, build) {
+  return Object.values(effectiveDefinition(mech, build).components || {})
+    .flatMap((component) => component.fixed || [])
+    .filter((itemId) => itemById(itemId)?.item_type !== "engine");
+}
+
+function renderMechBrowserFixedEquipment(mech, build) {
+  const rows = fixedEquipmentRowsHtml(mechFixedEquipmentIds(mech, build));
+  if (!rows) return "";
+  return `
+    <section class="mech-summary-section mech-browser-preview-fixed-equipment">
+      <div class="mech-summary-section-heading"><h3>${t("info.fixedEquipment")}</h3></div>
+      ${rows}
+    </section>
+  `;
+}
+
 function omnipodTooltipHtml(pod) {
   const name = `${String(pod.set || "OMNIPOD").toUpperCase()} ${String(pod.component || "").replaceAll("_", " ").toUpperCase()}`.trim();
   const hardpoints = hardpointCountsFromHardpoints(omnipodDefinition(pod).hardpoints);
@@ -15680,6 +15756,7 @@ function omnipodTooltipHtml(pod) {
         <div class="omnipod-tooltip-section-title">HARDPOINTS</div>
         <div class="hardpoint-line omnipod-tooltip-hardpoints">${hardpointChips}</div>
       </div>
+      ${omnipodTooltipEquipmentSection(omnipodFixedEquipmentIds(pod))}
       <div class="omnipod-tooltip-section">
         <div class="omnipod-tooltip-section-title">QUIRKS</div>
         <div class="omnipod-tooltip-rows">${omnipodTooltipQuirkRows(pod.quirks || [])}</div>
@@ -18229,6 +18306,8 @@ if (globalThis.__MWOLAB_TEST__) {
     componentWeaponDoorStatus,
     weaponDoorRequiredWeapons,
     weaponDoorTooltipHtml,
+    omnipodTooltipHtml,
+    renderMechBrowserFixedEquipment,
     mechMatchesQuirkFilters,
     normalizeMechHardpointFilterMinimum,
     calculateBuild,

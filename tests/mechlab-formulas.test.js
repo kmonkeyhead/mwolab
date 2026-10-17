@@ -961,6 +961,117 @@ test("부위 웨펀도어 아이콘은 현재 무장의 슬롯 Attachment가 도
   }
 });
 
+test("옵니포드 툴팁 고정 장비는 히트싱크·점프젯을 달린 부위에, 나머지 멕 고정 장비를 CT에 표시한다", () => {
+  const readData = (file) => JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", file),
+    "utf8",
+  ));
+  const previous = {
+    equipment: api.state.equipment,
+    omnipods: api.state.omnipods,
+    mechs: api.state.mechs,
+    selectedMech: api.state.selectedMech,
+  };
+  const fixedSection = (html) => {
+    const start = html.indexOf(">FIXED EQUIPMENT</div>");
+    if (start < 0) return "";
+    assert.equal(html.indexOf(">FIXED EQUIPMENT</div>", start + 1), -1);
+    return html.slice(start, html.indexOf('<div class="omnipod-tooltip-section">', start));
+  };
+  try {
+    api.state.equipment = readData("equipment.json");
+    api.state.omnipods = readData("omnipods.json");
+    api.state.mechs = readData("mechs.json");
+    const pod = (id) => api.state.omnipods[String(id)];
+    const mechByName = (name) => api.state.mechs.find((mech) => mech.name === name);
+    const tooltip = (podId) => fixedSection(api.omnipodTooltipHtml(pod(podId)));
+
+    // 고정 장비가 없는 포드는 항목을 생략하고, CT에 달린 멕 고정 히트싱크는 표시하되 엔진은 제외한다.
+    api.state.selectedMech = mechByName("tbr-prime");
+    assert.equal(tooltip(30000), "");
+    let html = tooltip(30003);
+    assert.match(html, /CLAN DOUBLE HEAT SINK[\s\S]*×5/);
+    assert.doesNotMatch(html, /ENGINE/);
+
+    // 포드 테이블의 fixed 점프젯은 같은 장비끼리 묶고 장비 리스트 행의 점프젯 색상 클래스를 사용한다.
+    html = tooltip(30018);
+    assert.match(html, /item-row fixed-equipment-row jumpjet/);
+    assert.match(html, /item-type-mark/);
+    assert.match(html, /JUMP JETS - CLASS III[\s\S]*×2/);
+
+    // NOBLE 다리 점프젯은 다리 포드에, 멕 고정 AC/20과 CT MASC는 CT 포드에만 표시한다.
+    api.state.selectedMech = mechByName("shc-no");
+    assert.match(tooltip(31590), /fixed-equipment-row jumpjet[\s\S]*JUMP JETS - CLASS IV[\s\S]*×2/);
+    assert.equal(tooltip(31588), "");
+    html = tooltip(31587);
+    assert.match(html, /fixed-equipment-row ballistic[\s\S]*AC\/20/);
+    assert.match(html, /fixed-equipment-row masc[\s\S]*Clan MASC Mk II<\/strong><\/span>\s*<span>×1</);
+    assert.doesNotMatch(html, /JUMP JETS|ENGINE/);
+    // 같은 섀시의 다른 배리언트 포드를 장착해도 현재 멕의 부위 고정 점프젯을 사용한다.
+    assert.match(tooltip(30566), /JUMP JETS - CLASS IV/);
+
+    // 측면 몸통의 멕 고정 히트싱크는 그 부위에, 측면 몸통 MASC는 CT에 표시한다.
+    api.state.selectedMech = mechByName("exe-prime");
+    assert.match(tooltip(30468), /CLAN DOUBLE HEAT SINK/);
+    html = tooltip(30467);
+    assert.match(html, /Clan MASC Mk IV/);
+    assert.match(html, /CLAN DOUBLE HEAT SINK[\s\S]*×5/);
+    assert.doesNotMatch(html, /JUMP JETS/);
+
+    // CT 포드 테이블의 고정 장비와 CT에 달린 멕 고정 장비를 함께 표시한다.
+    api.state.selectedMech = mechByName("dwf-s");
+    html = tooltip(30325);
+    assert.match(html, /JUMP JETS - CLASS I</);
+    assert.match(html, /CLAN DOUBLE HEAT SINK[\s\S]*×2/);
+  } finally {
+    Object.assign(api.state, previous);
+  }
+});
+
+test("멕 목록 미리보기는 기본 빌드의 모든 고정 장비를 부위 없이 묶어 표시한다", () => {
+  const readData = (file) => JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", file),
+    "utf8",
+  ));
+  const previous = {
+    equipment: api.state.equipment,
+    loadouts: api.state.loadouts,
+    omnipods: api.state.omnipods,
+    mechs: api.state.mechs,
+    initialFittingMode: api.state.initialFittingPreferences.mode,
+  };
+  try {
+    api.state.equipment = readData("equipment.json");
+    api.state.loadouts = readData("loadouts.json");
+    api.state.omnipods = readData("omnipods.json");
+    api.state.mechs = readData("mechs.json");
+    api.state.initialFittingPreferences.mode = "stock";
+    const preview = (name) => {
+      const mech = api.state.mechs.find((candidate) => candidate.name === name);
+      return api.renderMechBrowserFixedEquipment(mech, api.buildForMechSelection(mech));
+    };
+
+    // 옴니멕은 멕 정의와 기본 옵니포드의 고정 장비를 합치고 고정 엔진은 제외한다.
+    let html = preview("shc-no");
+    assert.match(html, />FIXED EQUIPMENT</);
+    assert.match(html, /fixed-equipment-row ballistic[\s\S]*AC\/20/);
+    assert.match(html, /fixed-equipment-row jumpjet[\s\S]*JUMP JETS - CLASS IV[\s\S]*×4/);
+    assert.match(html, /fixed-equipment-row masc[\s\S]*Clan MASC Mk II/);
+    assert.doesNotMatch(html, /ENGINE/);
+    assert.match(preview("tbr-s"), /JUMP JETS - CLASS III[\s\S]*×5/);
+
+    // 배틀멕의 고정 무기·모듈도 표시하고, 고정 장비가 없으면 항목을 생략한다.
+    html = preview("bsk-vk");
+    assert.match(html, /fixed-equipment-row ballistic[\s\S]*C-RAILGUN<\/strong><\/span>\s*<span>×1</);
+    assert.match(html, /RAILGUN CAPACITOR[\s\S]*×2/);
+    assert.equal(preview("as7-d"), "");
+  } finally {
+    api.state.initialFittingPreferences.mode = previous.initialFittingMode;
+    delete previous.initialFittingMode;
+    Object.assign(api.state, previous);
+  }
+});
+
 test("공유 URL은 MWO 코드를 압축하고 기존 코드를 정확히 복원한다", async () => {
   const code = "A12?@[\\]^_`abc|def";
   const sharedUrl = new URL(await api.sharedLoadoutUrl(code));

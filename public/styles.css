@@ -9925,6 +9925,39 @@ body.pointer-drag-active * {
   white-space: nowrap;
 }
 
+.fixed-equipment-rows {
+  border: 1px solid #263840;
+}
+
+.item-row.fixed-equipment-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 1.5rem;
+  padding: 0;
+  border-bottom-color: #1f2d32;
+  color: #b8c8cd;
+}
+
+.item-row.fixed-equipment-row strong,
+.item-row.fixed-equipment-row > span:not(.item-row-name) {
+  font-size: 0.75rem;
+}
+
+.item-row.fixed-equipment-row strong {
+  font-weight: 400;
+}
+
+.item-row.fixed-equipment-row > span:not(.item-row-name) {
+  font-weight: 700;
+}
+
+.item-row.fixed-equipment-row:last-child {
+  border-bottom: 0;
+}
+
+.item-row.fixed-equipment-row:hover {
+  background: transparent;
+}
+
 .omnipod-tooltip-empty {
   color: #596267;
   font-size: 0.72rem;
