@@ -1870,6 +1870,8 @@ const STOCK_ACTUATOR_STATE_REMOVED = Object.freeze({
 });
 // 사용자 정의 규칙: 오토캐논·가우스·PPC 계열 무기가 있는 팔은 토글 가능한 로우 어퍼·핸드를 달 수 없다.
 const ARM_ACTUATOR_BLOCKING_WEAPON_PATTERN = /autocannon|gauss|ppc/i;
+// 사용자 정의 예외: AP 가우스와 MAGSHOT은 로우 어퍼·핸드에 영향을 주지 않는다.
+const ARM_ACTUATOR_ALLOWED_WEAPON_NAMES = new Set(["clanapgauss", "magshot"]);
 
 const COMPONENT_NAMES = {
   head: t("component.head"),
@@ -4093,7 +4095,10 @@ function addEcmCapabilityHardpoint(hardpoints) {
 }
 
 function armActuatorBlocksWeapon(item) {
-  return item?.item_type === "weapon" && ARM_ACTUATOR_BLOCKING_WEAPON_PATTERN.test(String(item.name || ""));
+  const name = String(item?.name || "");
+  return item?.item_type === "weapon"
+    && !ARM_ACTUATOR_ALLOWED_WEAPON_NAMES.has(name.toLowerCase())
+    && ARM_ACTUATOR_BLOCKING_WEAPON_PATTERN.test(name);
 }
 
 function armActuatorPod(componentName, build = state.currentBuild, mech = state.selectedMech) {

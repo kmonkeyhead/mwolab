@@ -1089,6 +1089,18 @@ test("옵니포드 팔 로우 어퍼·핸드는 Toggleable 포드에서만 토�
     assert.equal(api.toggleArmActuator("left_arm", "lowerArm", { render: false }), true);
     assert.ok(armInternals(mech, build, "left_arm").includes(1910));
 
+    // AP 가우스와 MAGSHOT은 이름에 가우스 계열이 있어도 로우 어퍼를 해제하지 않는다.
+    for (const itemId of [1261, 1078]) {
+      build.components.left_arm.items = [{ type: "weapon", item_id: itemId, weapon_group: 1 }];
+      assert.deepEqual(
+        plain(api.armActuatorStatus("left_arm", mech, build).lowerArm),
+        { active: true, locked: false },
+        itemName(itemId),
+      );
+    }
+    build.components.left_arm.items = [{ type: "weapon", item_id: 1208, weapon_group: 1 }];
+    assert.deepEqual(plain(api.armActuatorStatus("left_arm", mech, build).lowerArm), { active: false, locked: true });
+
     // 일반 배틀멕 팔의 고정 액추에이터는 토글 대상이 아니다.
     ({ mech, build } = stockBuild("HBK-4G"));
     assert.equal(api.armActuatorStatus("left_arm", mech, build), null);
