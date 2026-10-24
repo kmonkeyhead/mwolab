@@ -405,6 +405,38 @@ test("장비 툴팁은 추출된 장비 HP와 미사일당 HP를 구분해 표�
   }
 });
 
+test("ECM 툴팁은 범위·적 타겟팅/락온 속도 감소와 쿼크·스킬을 반영한 적 감지거리 감소를 표시한다", () => {
+  const ecmApi = loadMechLab();
+  const equipmentData = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", "equipment.json"),
+    "utf8",
+  ));
+  ecmApi.state.equipment = equipmentData;
+  const clanEcm = equipmentData.items["9021"];
+  const guardianEcm = equipmentData.items["9006"];
+  const rowValue = (rows, label) => rows.find(([rowLabel]) => rowLabel === label)?.[1];
+
+  let rows = ecmApi.equipmentTooltipGroups(clanEcm, 0, [], []).flat();
+  assert.equal(rowValue(rows, "ECM RANGE"), "90 m");
+  assert.equal(rowValue(rows, "ENEMY TARGETING SPEED REDUCTION"), "30%");
+  assert.equal(rowValue(rows, "ENEMY LOCK-ON SPEED REDUCTION"), "50%");
+  assert.equal(rowValue(rows, "ENEMY DETECTION RANGE REDUCTION"), "30%");
+
+  // 기본 30%에 쿼크 27%와 스킬 2노드 33%를 더한다.
+  rows = ecmApi.equipmentTooltipGroups(clanEcm, 0, [
+    { name: "ecmtargetrangereduction_multiplier", value: 0.27 },
+    { name: "ECMTargetRangeReduction_multiplier", value: 0.33 },
+  ], []).flat();
+  const detection = rowValue(rows, "ENEMY DETECTION RANGE REDUCTION");
+  assert.equal(detection.final, "90%");
+  assert.equal(detection.base, "30");
+  assert.equal(detection.quirk, "60");
+
+  // 무장 정보는 쿼크·스킬 없이 기본 30%만 보여준다.
+  assert.equal(ecmApi.equipmentInfoEcmRow(clanEcm, 1).cells.detectionReduction, "30%");
+  assert.equal(ecmApi.equipmentInfoEcmRow(guardianEcm, 1).cells.detectionReduction, "30%");
+});
+
 test("장비 HP는 명시된 0과 소수·큰 값을 보존하고 누락·빈값·비수치를 숨긴다", () => {
   const tooltipApi = loadMechLab();
   for (const field of ["Health", "health"]) {
@@ -892,6 +924,28 @@ test("추출된 웨펀도어 배율로 특수 사항 웨펀도어를 판별한�
     mechs.filter((mech) => mech.chassis === "kodiak").forEach((mech) => {
       assert.equal(api.mechSpecialFeatures(mech).has("weapon-door"), false, mech.display_name);
     });
+
+    // 팔 액추에이터 없음은 토글 상태가 아니라 차체·기본 옵니포드 원본 internals로 판별한다.
+    const armFeatures = (name) => {
+      const mech = mechs.find((candidate) => candidate.name === name);
+      assert.ok(mech, name);
+      const features = api.mechSpecialFeatures(mech);
+      return [features.has("no-arm-actuators"), features.has("no-lower-arm-actuators")];
+    };
+    assert.deepEqual(armFeatures("prs-p1w"), [true, true]);
+    assert.deepEqual(armFeatures("jm6-de"), [true, true]);
+    assert.deepEqual(armFeatures("prs-p1"), [false, true]);
+    assert.deepEqual(armFeatures("cn9-ah"), [false, true]);
+    assert.deepEqual(armFeatures("prs-p1a"), [false, false]);
+    assert.deepEqual(armFeatures("ach-a"), [false, false]);
+    assert.deepEqual(armFeatures("hbk-4g"), [false, false]);
+
+    // 감지 안 됨은 ECM 타겟 거리 감소 쿼크 합계 25% 이상인 기본 빌드만 포함한다.
+    const undetectable = mechs
+      .filter((mech) => api.mechSpecialFeatures(mech).has("ecm-undetectable"))
+      .map((mech) => mech.name)
+      .sort();
+    assert.deepEqual(undetectable, ["arc-2w-c", "arc-2w-cs", "grf-2n", "grf-2np", "prs-p1a"]);
   } finally {
     Object.assign(api.state, previous);
     api.state.mechSpecialFeatureCache.clear();

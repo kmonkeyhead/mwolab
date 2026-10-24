@@ -434,7 +434,11 @@ const TEXT = {
     "filters.compactGyroDescription": "슬롯 감소, 톤 증가",
     "filters.xlGyroDescription": "슬롯 증가, 톤 감소",
     "filters.compactCockpitDescription": "슬롯 감소, 톤 감소",
-    "filters.noArmActuatorsDescription": "팔에 슬롯 -1, 팔 움직임 불가능",
+    "filters.noArmActuatorsDescription": "팔에 슬롯 +2 / 팔 X, Y축 고정 / 가장 큰 무기 장착 가능",
+    "filters.noLowerArmActuators": "Lower Arm 액추에이터 없음",
+    "filters.ecmUndetectable": "감지 안 됨",
+    "filters.ecmUndetectableDescription": "ECM 스킬 강화 시 적에게 감지가 안 됨",
+    "filters.noLowerArmActuatorsDescription": "팔에 슬롯 +1 / 팔 X축 고정",
     "filters.laserHeatSinksDescription": "환경 열 100% 무시",
     "filters.tacticonB2000Description": "아군 센서 레인지 증가",
     "filters.shieldDescription": "더 많은 아머, 톤 증가",
@@ -542,6 +546,7 @@ const TEXT = {
     "equipmentInfo.ecmRange": "ECM 범위",
     "equipmentInfo.enemyTargetingReduction": "적 타겟팅 속도 감소",
     "equipmentInfo.enemyLockOnReduction": "적 락온 속도 감소",
+    "equipmentInfo.enemyDetectionRangeReduction": "적 감지거리 감소",
     "equipmentInfo.jumpJets": "점프젯",
     "equipmentInfo.initialThrust": "초기 추력",
     "equipmentInfo.verticalThrust": "수직 추력",
@@ -1089,7 +1094,11 @@ const TEXT = {
     "filters.compactGyroDescription": "Fewer slots and increased tonnage",
     "filters.xlGyroDescription": "More slots and less tonnage",
     "filters.compactCockpitDescription": "Fewer slots and less tonnage",
-    "filters.noArmActuatorsDescription": "-1 arm slot; the affected arm cannot move",
+    "filters.noArmActuatorsDescription": "+2 arm slots / arm X and Y axes locked / fits the largest weapons",
+    "filters.noLowerArmActuators": "No Lower Arm Actuator",
+    "filters.ecmUndetectable": "Undetectable",
+    "filters.ecmUndetectableDescription": "Enemies cannot detect it with ECM skills upgraded",
+    "filters.noLowerArmActuatorsDescription": "+1 arm slot / arm X axis locked",
     "filters.laserHeatSinksDescription": "Ignores 100% of environmental heat",
     "filters.tacticonB2000Description": "Increases allied sensor range",
     "filters.shieldDescription": "More armor at increased tonnage",
@@ -1197,6 +1206,7 @@ const TEXT = {
     "equipmentInfo.ecmRange": "ECM Range",
     "equipmentInfo.enemyTargetingReduction": "Enemy Targeting Speed Reduction",
     "equipmentInfo.enemyLockOnReduction": "Enemy Lock-on Speed Reduction",
+    "equipmentInfo.enemyDetectionRangeReduction": "Enemy Detection Range Reduction",
     "equipmentInfo.jumpJets": "Jump Jets",
     "equipmentInfo.initialThrust": "Initial Thrust",
     "equipmentInfo.verticalThrust": "Vertical Thrust",
@@ -1901,12 +1911,14 @@ const MECH_SPECIAL_TRAIT_ORDER = [
   "fall-resistant",
   "crit-immune",
   "weapon-door",
+  "ecm-undetectable",
+  "no-arm-actuators",
+  "no-lower-arm-actuators",
 ];
 const MECH_SPECIAL_EQUIPMENT_ORDER = [
   "compact-gyro",
   "xl-gyro",
   "compact-cockpit",
-  "no-arm-actuators",
   "laser-heat-sinks",
   "tacticon-b2000",
   "shield",
@@ -7598,6 +7610,12 @@ function mechSpecialFeatures(mech) {
   if (durabilityQuirkSummaryValues(quirks).critPrevention >= 1) {
     features.add("crit-immune");
   }
+  // ECM 타겟 거리 감소 쿼크 합계가 25% 이상이면 ECM 스킬 강화 시 적에게 감지되지 않는다.
+  if (quirks
+    .filter((quirk) => String(quirk.name || "").toLowerCase() === "ecmtargetrangereduction_multiplier")
+    .reduce((sum, quirk) => sum + number(quirk.value), 0) >= 0.25) {
+    features.add("ecm-undetectable");
+  }
   if (fixedItemKeys.some((itemKey) => itemKey.includes("compactgyro"))) {
     features.add("compact-gyro");
   }
@@ -7610,15 +7628,20 @@ function mechSpecialFeatures(mech) {
   if (fixedItemKeys.some((itemKey) => itemKey.includes("compactcockpit"))) {
     features.add("compact-cockpit");
   }
-  const hasShoulderOnlyArm = ["right_arm", "left_arm"].some((component) => {
-    const internals = activeDefinition.components?.[component]?.internals || [];
-    return internals.includes(SHOULDER_ID)
-      && !internals.includes(UPPER_ARM_ACTUATOR_ID)
-      && !internals.includes(LOWER_ARM_ACTUATOR_ID)
-      && !internals.includes(HAND_ACTUATOR_ID);
-  });
-  if (hasShoulderOnlyArm) {
+  // 토글 해제 상태가 아니라 차체와 기본 옵니포드 원본 internals에 액추에이터가 있는지로 판별한다.
+  const armActuatorInternals = ["right_arm", "left_arm"]
+    .filter((component) => currentDefinition(mech).components?.[component])
+    .map((component) => new Set([
+      ...(currentDefinition(mech).components[component].internals || []),
+      ...(hasFixedOmnipods(mech)
+        ? omnipodDefinition(podById(build.components?.[component]?.omnipod)).internals
+        : []),
+    ].map(Number)));
+  if (armActuatorInternals.some((internals) => !internals.has(UPPER_ARM_ACTUATOR_ID))) {
     features.add("no-arm-actuators");
+  }
+  if (armActuatorInternals.some((internals) => !internals.has(LOWER_ARM_ACTUATOR_ID))) {
+    features.add("no-lower-arm-actuators");
   }
   if (quirks.some((quirk) => (
     String(quirk.name || "").toLowerCase() === "externalheat_multiplier"
@@ -11974,10 +11997,30 @@ function equipmentInfoMascRow(item, index) {
   };
 }
 
+// 사용자 정의 규칙: ECM 장비 원본에 값이 없는 기본 적 감지거리 감소는 IS·Clan 모두 30%다.
+const ECM_BASE_TARGET_RANGE_REDUCTION = 0.3;
+
+// ECM 원본 factor는 적 속도 배율이므로 감소율은 1 - factor다.
+function ecmEffectValues(item) {
+  const stats = item?.stats || {};
+  return {
+    range: number(stats.range),
+    targetingReduction: Math.max(0, 1 - number(stats.targetingfactor, 1)),
+    lockOnReduction: Math.max(0, 1 - number(stats.weaponlockfactor, 1)),
+    detectionReduction: ECM_BASE_TARGET_RANGE_REDUCTION,
+  };
+}
+
+// 기본값에 더해지는 쿼크·스킬의 ecmtargetrangereduction_multiplier 합계.
+function ecmTargetRangeReduction(quirks = []) {
+  return Math.max(0, quirks
+    .filter((quirk) => String(quirk.name || "").toLowerCase() === "ecmtargetrangereduction_multiplier")
+    .reduce((sum, quirk) => sum + number(quirk.value), 0));
+}
+
 function equipmentInfoEcmRow(item, index) {
   const stats = item.stats || {};
-  const targetingReduction = Math.max(0, 1 - number(stats.targetingfactor, 1));
-  const lockOnReduction = Math.max(0, 1 - number(stats.weaponlockfactor, 1));
+  const { targetingReduction, lockOnReduction, detectionReduction } = ecmEffectValues(item);
   const name = item.display_name || item.name || "-";
   return {
     values: {
@@ -11989,6 +12032,7 @@ function equipmentInfoEcmRow(item, index) {
       ecmRange: Number(stats.range),
       targetingReduction,
       lockOnReduction,
+      detectionReduction,
     },
     cells: {
       index: equipmentInfoValue(index, 0),
@@ -11999,6 +12043,7 @@ function equipmentInfoEcmRow(item, index) {
       ecmRange: equipmentInfoValue(stats.range, 0, "m"),
       targetingReduction: equipmentInfoPercent(targetingReduction),
       lockOnReduction: equipmentInfoPercent(lockOnReduction),
+      detectionReduction: equipmentInfoPercent(detectionReduction),
     },
   };
 }
@@ -12237,6 +12282,7 @@ function renderEquipmentInfoModules(items) {
     { key: "ecmRange", label: t("equipmentInfo.ecmRange") },
     { key: "targetingReduction", label: t("equipmentInfo.enemyTargetingReduction") },
     { key: "lockOnReduction", label: t("equipmentInfo.enemyLockOnReduction") },
+    { key: "detectionReduction", label: t("equipmentInfo.enemyDetectionRangeReduction") },
   ], ecmRows, "equipment-info-modules equipment-info-ecm", "ecm") : "";
   const jumpJetTable = jumpJetRows.length ? equipmentInfoTable(t("equipmentInfo.jumpJets"), [
     { key: "index", label: "#" },
@@ -15723,6 +15769,19 @@ function equipmentTooltipGroups(
     ]);
   } else if (item.item_type === "masc") {
     groups.push(...mascTooltipMovementGroups(item, effectiveQuirkValues));
+  } else if (isEcm(item)) {
+    const ecm = ecmEffectValues(item);
+    groups.push([
+      ["ECM RANGE", tooltipNumber(ecm.range, 0, " m")],
+      ["ENEMY TARGETING SPEED REDUCTION", tooltipNumber(ecm.targetingReduction * 100, 1, "%")],
+      ["ENEMY LOCK-ON SPEED REDUCTION", tooltipNumber(ecm.lockOnReduction * 100, 1, "%")],
+      ["ENEMY DETECTION RANGE REDUCTION", tooltipQuirkValue(
+        ecm.detectionReduction * 100,
+        (ecm.detectionReduction + ecmTargetRangeReduction(quirks)) * 100,
+        1,
+        "%",
+      )],
+    ]);
   } else if (equipmentLimitGroup(item) === "target-computer"
     || (equipmentLimitGroup(item) === ""
       && (isEquipmentInfoTargetComputer(item)
@@ -18463,6 +18522,8 @@ if (globalThis.__MWOLAB_TEST__) {
     stockActuatorState,
     weaponDoorRequiredWeapons,
     weaponDoorTooltipHtml,
+    ecmTargetRangeReduction,
+    equipmentInfoEcmRow,
     omnipodTooltipHtml,
     renderMechBrowserFixedEquipment,
     mechMatchesQuirkFilters,
