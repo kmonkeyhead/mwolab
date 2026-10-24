@@ -405,6 +405,42 @@ test("장비 툴팁은 추출된 장비 HP와 미사일당 HP를 구분해 표�
   }
 });
 
+test("필터 전체 초기화는 모든 탭의 멕 필터를 기본값으로 되돌린다", () => {
+  const filterApi = loadMechLab();
+  const { state } = filterApi;
+  state.mechSpecialTypeOptions = [{ key: "hero", label: "Hero" }, { key: "champion", label: "Champion" }];
+  state.mechFilterSpecialTypes = new Set(["hero"]);
+  assert.equal(filterApi.mechFiltersAtDefault(), false);
+  state.mechFilterSpecialTypes = new Set(["hero", "champion"]);
+  assert.equal(filterApi.mechFiltersAtDefault(), true);
+  assert.equal(filterApi.resetMechFilters({ render: false }), false);
+
+  state.mechFilterFaction = "Clan";
+  state.mechFilterWeightClasses.add("light");
+  state.mechFilterAllTypes = false;
+  state.mechFilterTypeCategories.add("special");
+  state.mechFilterSpecialTypes = new Set(["hero"]);
+  const [hardpointType] = Object.keys(state.mechHardpointFilters);
+  state.mechHardpointFilters[hardpointType].enabled = true;
+  state.mechSpecialTraitSelections.add("weapon-door");
+  state.mechSpecialEquipmentSelections.add("shield");
+  state.mechQuirkFilterMode = "all";
+  state.mechQuirkFilterSelections.set("all_heat_multiplier", 5);
+  state.mechQuirkFilterSearch = "heat";
+  state.activeMechFilterTab = "quirks";
+
+  assert.equal(filterApi.resetMechFilters({ render: false }), true);
+  assert.equal(filterApi.mechFiltersAtDefault(), true);
+  assert.equal(state.mechFilterFaction, "");
+  assert.equal(state.mechFilterAllTypes, true);
+  assert.deepEqual([...state.mechFilterSpecialTypes].sort(), ["champion", "hero"]);
+  assert.equal(state.mechHardpointFilters[hardpointType].enabled, false);
+  assert.equal(state.mechQuirkFilterMode, "any");
+  assert.equal(state.mechQuirkFilterSearch, "");
+  // 현재 열린 필터 탭은 유지한다.
+  assert.equal(state.activeMechFilterTab, "quirks");
+});
+
 test("ECM 툴팁은 범위·적 타겟팅/락온 속도 감소와 쿼크·스킬을 반영한 적 감지거리 감소를 표시한다", () => {
   const ecmApi = loadMechLab();
   const equipmentData = JSON.parse(fs.readFileSync(

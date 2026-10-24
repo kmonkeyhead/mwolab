@@ -463,6 +463,7 @@ const TEXT = {
     "filters.clan": "클랜",
     "filters.innerSphere": "이너",
     "filters.close": "닫기",
+    "filters.resetAll": "필터 전체 초기화",
     "filters.allEquipment": "모든 장비",
     "filters.weapons": "무기",
     "filters.ammo": "탄약",
@@ -1123,6 +1124,7 @@ const TEXT = {
     "filters.clan": "Clan",
     "filters.innerSphere": "Inner Sphere",
     "filters.close": "Close",
+    "filters.resetAll": "Reset all filters",
     "filters.allEquipment": "All equipment",
     "filters.weapons": "Weapons",
     "filters.ammo": "Ammo",
@@ -2351,16 +2353,7 @@ const state = {
   mechFilterTypeCategories: new Set(),
   mechFilterSpecialTypes: new Set(),
   mechSpecialTypeOptions: [],
-  mechHardpointFilters: Object.fromEntries(MECH_HARDPOINT_FILTER_ORDER.map((type) => [
-    type,
-    {
-      enabled: false,
-      minimums: Object.fromEntries(MECH_FILTER_HARDPOINT_LOCATIONS.map((location) => [
-        location.key,
-        normalizeMechHardpointFilterMinimum(location.key, 0),
-      ])),
-    },
-  ])),
+  mechHardpointFilters: defaultMechHardpointFilters(),
   mechHardpointFilterCountsCache: new Map(),
   activeMechFilterTab: "basic",
   mechSpecialTraitSelections: new Set(),
@@ -7844,6 +7837,7 @@ function renderMechQuirkFilterControls() {
     searchInput.value = state.mechQuirkFilterSearch;
   }
   $("clear-mech-quirk-filters").disabled = state.mechQuirkFilterSelections.size === 0;
+  $("reset-mech-filters").disabled = mechFiltersAtDefault();
   const search = state.mechQuirkFilterSearch.trim().toLowerCase();
   const visibleOptions = search
     ? state.mechQuirkFilterOptions.filter((option) => (
@@ -14820,6 +14814,51 @@ function setMechQuirkFilterMinimum(quirk, value) {
   renderMechList();
 }
 
+function defaultMechHardpointFilters() {
+  return Object.fromEntries(MECH_HARDPOINT_FILTER_ORDER.map((type) => [
+    type,
+    {
+      enabled: false,
+      minimums: Object.fromEntries(MECH_FILTER_HARDPOINT_LOCATIONS.map((location) => [
+        location.key,
+        normalizeMechHardpointFilterMinimum(location.key, 0),
+      ])),
+    },
+  ]));
+}
+
+function mechFiltersAtDefault() {
+  return !state.mechFilterFaction
+    && state.mechFilterWeightClasses.size === 0
+    && state.mechFilterAllTypes
+    && state.mechFilterTypeCategories.size === 0
+    && state.mechSpecialTypeOptions.every((option) => state.mechFilterSpecialTypes.has(option.key))
+    && JSON.stringify(state.mechHardpointFilters) === JSON.stringify(defaultMechHardpointFilters())
+    && state.mechSpecialTraitSelections.size === 0
+    && state.mechSpecialEquipmentSelections.size === 0
+    && state.mechQuirkFilterMode === "any"
+    && state.mechQuirkFilterSelections.size === 0
+    && !state.mechQuirkFilterSearch;
+}
+
+// 필터 대화상자의 모든 탭 선택을 초기 상태로 되돌린다. 현재 열린 탭은 유지한다.
+function resetMechFilters({ render = true } = {}) {
+  if (mechFiltersAtDefault()) return false;
+  state.mechFilterFaction = "";
+  state.mechFilterWeightClasses.clear();
+  state.mechFilterAllTypes = true;
+  state.mechFilterTypeCategories.clear();
+  state.mechFilterSpecialTypes = new Set(state.mechSpecialTypeOptions.map((option) => option.key));
+  state.mechHardpointFilters = defaultMechHardpointFilters();
+  state.mechSpecialTraitSelections.clear();
+  state.mechSpecialEquipmentSelections.clear();
+  state.mechQuirkFilterMode = "any";
+  state.mechQuirkFilterSelections.clear();
+  state.mechQuirkFilterSearch = "";
+  if (render) renderMechList();
+  return true;
+}
+
 function clearMechQuirkFilters() {
   if (state.mechQuirkFilterSelections.size === 0) return;
   state.mechQuirkFilterSelections.clear();
@@ -17387,6 +17426,7 @@ function bindEvents() {
     renderMechQuirkFilterControls();
   });
   $("clear-mech-quirk-filters").addEventListener("click", clearMechQuirkFilters);
+  $("reset-mech-filters").addEventListener("click", () => resetMechFilters());
   $("mech-filter-overlay").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-mech-filter-tab]");
     if (tab) {
@@ -18528,6 +18568,8 @@ if (globalThis.__MWOLAB_TEST__) {
     weaponDoorRequiredWeapons,
     weaponDoorTooltipHtml,
     ecmTargetRangeReduction,
+    resetMechFilters,
+    mechFiltersAtDefault,
     equipmentInfoEcmRow,
     omnipodTooltipHtml,
     renderMechBrowserFixedEquipment,

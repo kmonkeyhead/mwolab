@@ -5285,6 +5285,21 @@ body.ui-settings-open {
   height: min(48rem, calc(100dvh - 3rem));
 }
 
+.mech-filter-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.mech-filter-reset {
+  min-width: 6rem;
+}
+
+.mech-filter-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .mech-filter-tabs {
   display: flex;
   gap: 0.45rem;
