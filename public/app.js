@@ -276,6 +276,8 @@ const TEXT = {
     "mechlab.weaponDoorInactive": "현재 무장으로는 적용되지 않습니다.",
     "mechlab.weaponDoorRequired": "적용 무장",
     "mechlab.weaponDoorAllWeapons": "모든 {type} 무기",
+    "mechlab.actuatorBlockedByWeapon": "AC·가우스·PPC 계열 무기가 있어 장착할 수 없습니다.",
+    "mechlab.actuatorRequiresLowerArm": "LOWER ARM ACTUATOR가 있어야 장착할 수 있습니다.",
     "mechlab.omnipodFixedEquipment": "FIXED EQUIPMENT",
     "weaponDetail.open": "자세히",
     "recommendations.title": "추천 핏팅",
@@ -929,6 +931,8 @@ const TEXT = {
     "mechlab.weaponDoorInactive": "Not active with the current weapons.",
     "mechlab.weaponDoorRequired": "Required weapons",
     "mechlab.weaponDoorAllWeapons": "Any {type} weapon",
+    "mechlab.actuatorBlockedByWeapon": "Unavailable with an autocannon, Gauss, or PPC weapon in this arm.",
+    "mechlab.actuatorRequiresLowerArm": "Requires the lower arm actuator.",
     "mechlab.omnipodFixedEquipment": "FIXED EQUIPMENT",
     "weaponDetail.open": "Details",
     "recommendations.title": "Recommended fittings",
@@ -1838,6 +1842,24 @@ const MWO_ACTUATOR_BITS = Object.freeze({
   leftHandRemoved: 4,
   leftLowerArmRemoved: 8,
 });
+const ARM_ACTUATOR_BITS = Object.freeze({
+  left_arm: Object.freeze({
+    lowerArm: MWO_ACTUATOR_BITS.leftLowerArmRemoved,
+    hand: MWO_ACTUATOR_BITS.leftHandRemoved,
+  }),
+  right_arm: Object.freeze({
+    lowerArm: MWO_ACTUATOR_BITS.rightLowerArmRemoved,
+    hand: MWO_ACTUATOR_BITS.rightHandRemoved,
+  }),
+});
+// 기본 로드아웃 ActuatorState 원본 값별로 해제되는 액추에이터.
+const STOCK_ACTUATOR_STATE_REMOVED = Object.freeze({
+  eactuatorstate_none: Object.freeze(["lowerArm", "hand"]),
+  eactuatorstate_armsonly: Object.freeze(["hand"]),
+  eactuatorstate_handsandarms: Object.freeze([]),
+});
+// 사용자 정의 규칙: 오토캐논·가우스·PPC 계열 무기가 있는 팔은 토글 가능한 로우 어퍼·핸드를 달 수 없다.
+const ARM_ACTUATOR_BLOCKING_WEAPON_PATTERN = /autocannon|gauss|ppc/i;
 
 const COMPONENT_NAMES = {
   head: t("component.head"),
@@ -3618,9 +3640,7 @@ function applyFixedOmnipods(mech, build) {
   normalizeRearArmor(build, mech, loadout);
   build.actuatorState = Number.isFinite(build.actuatorState)
     ? Math.max(0, build.actuatorState)
-    : (hasFixedOmnipods(mech)
-      ? MWO_ACTUATOR_BITS.leftLowerArmRemoved | MWO_ACTUATOR_BITS.rightLowerArmRemoved
-      : 0);
+    : stockActuatorState(mech, loadout);
   build.components ||= {};
   for (const name of COMPONENT_ORDER) {
     build.components[name] ||= { armor: 0, items: [] };
@@ -3639,7 +3659,21 @@ function applyFixedOmnipods(mech, build) {
     const centrePod = findOmnipod(mech?.chassis, setName, "centre_torso");
     if (centrePod?.id) centre.omnipod = centrePod.id;
   }
+  syncBlockedArmActuators(mech, build);
   return normalizeEngineHeatSinks(mech, build, { fillFromCentre: migrateEngineHeatSinks });
+}
+
+function stockActuatorState(mech, loadout = loadoutForMech(mech)) {
+  if (!hasFixedOmnipods(mech)) return 0;
+  const source = loadout?.actuator_state;
+  if (!source) return MWO_ACTUATOR_BITS.leftLowerArmRemoved | MWO_ACTUATOR_BITS.rightLowerArmRemoved;
+  let actuatorState = 0;
+  for (const [componentName, attribute] of [["left_arm", "LeftActuatorState"], ["right_arm", "RightActuatorState"]]) {
+    const removed = STOCK_ACTUATOR_STATE_REMOVED[String(source[attribute] || "").toLowerCase()]
+      || STOCK_ACTUATOR_STATE_REMOVED.eactuatorstate_none;
+    for (const actuator of removed) actuatorState |= ARM_ACTUATOR_BITS[componentName][actuator];
+  }
+  return actuatorState;
 }
 
 function normalizeRearArmor(build, mech, loadout = loadoutForMech(mech)) {
@@ -3684,9 +3718,7 @@ function buildFromLoadout(mech) {
     loadoutName: mech.stock_loadout,
     components,
     rearArmor,
-    actuatorState: hasFixedOmnipods(mech)
-      ? MWO_ACTUATOR_BITS.leftLowerArmRemoved | MWO_ACTUATOR_BITS.rightLowerArmRemoved
-      : 0,
+    actuatorState: stockActuatorState(mech, loadout),
     upgrades: JSON.parse(JSON.stringify(loadout.upgrades || {})),
   });
 }
@@ -4048,31 +4080,141 @@ function addEcmCapabilityHardpoint(hardpoints) {
   }];
 }
 
-function actuatorIsRemoved(componentName, itemId, build = state.currentBuild) {
+function armActuatorBlocksWeapon(item) {
+  return item?.item_type === "weapon" && ARM_ACTUATOR_BLOCKING_WEAPON_PATTERN.test(String(item.name || ""));
+}
+
+function armActuatorPod(componentName, build = state.currentBuild, mech = state.selectedMech) {
+  if (!ARM_ACTUATOR_BITS[componentName] || !hasFixedOmnipods(mech)) return null;
+  return podById(build?.components?.[componentName]?.omnipod);
+}
+
+// 옴니포드 원본 Internal의 Toggleable 표시가 있는 액추에이터만 토글 대상이다.
+function toggleableArmActuators(pod) {
+  const internals = new Set((pod?.internals || []).map(Number));
+  const toggleable = new Set((pod?.toggleable_internals || []).map(Number));
+  return {
+    lowerArm: internals.has(LOWER_ARM_ACTUATOR_ID) && toggleable.has(LOWER_ARM_ACTUATOR_ID),
+    hand: internals.has(HAND_ACTUATOR_ID) && toggleable.has(HAND_ACTUATOR_ID),
+  };
+}
+
+function armActuatorBlockingWeapons(componentName, build = state.currentBuild, pod = null) {
+  return [
+    ...(build?.components?.[componentName]?.items || []).map((entry) => itemById(entry.item_id)),
+    ...(pod?.fixed || []).map((itemId) => itemById(itemId)),
+  ].filter(armActuatorBlocksWeapon);
+}
+
+function actuatorIsRemoved(componentName, itemId, build = state.currentBuild, pod = null) {
+  const bits = ARM_ACTUATOR_BITS[componentName];
+  const id = Number(itemId);
+  if (!bits || (id !== LOWER_ARM_ACTUATOR_ID && id !== HAND_ACTUATOR_ID)) return false;
   const actuatorState = Math.max(0, number(build?.actuatorState));
-  if (componentName === "left_arm") {
-    if (Number(itemId) === LOWER_ARM_ACTUATOR_ID) {
-      return Boolean(actuatorState & MWO_ACTUATOR_BITS.leftLowerArmRemoved);
-    }
-    if (Number(itemId) === HAND_ACTUATOR_ID) {
-      return Boolean(
-        actuatorState
-        & (MWO_ACTUATOR_BITS.leftLowerArmRemoved | MWO_ACTUATOR_BITS.leftHandRemoved),
-      );
-    }
+  const toggleable = toggleableArmActuators(pod);
+  const blocked = (toggleable.lowerArm || toggleable.hand)
+    && armActuatorBlockingWeapons(componentName, build, pod).length > 0;
+  const lowerArmRemoved = Boolean(actuatorState & bits.lowerArm) || (blocked && toggleable.lowerArm);
+  if (id === LOWER_ARM_ACTUATOR_ID) return lowerArmRemoved;
+  // 핸드는 로우 어퍼가 있을 때만 장착된다.
+  return lowerArmRemoved || Boolean(actuatorState & bits.hand) || (blocked && toggleable.hand);
+}
+
+function armActuatorStatus(componentName, mech = state.selectedMech, build = state.currentBuild) {
+  const pod = armActuatorPod(componentName, build, mech);
+  const toggleable = toggleableArmActuators(pod);
+  if (!toggleable.lowerArm && !toggleable.hand) return null;
+  const blockingWeapons = armActuatorBlockingWeapons(componentName, build, pod);
+  const blocked = blockingWeapons.length > 0;
+  const lowerArmActive = toggleable.lowerArm
+    && !actuatorIsRemoved(componentName, LOWER_ARM_ACTUATOR_ID, build, pod);
+  return {
+    componentName,
+    blockingWeapons,
+    lowerArm: toggleable.lowerArm ? { active: lowerArmActive, locked: blocked } : null,
+    hand: toggleable.hand
+      ? {
+        active: !actuatorIsRemoved(componentName, HAND_ACTUATOR_ID, build, pod),
+        locked: blocked || (toggleable.lowerArm && !lowerArmActive),
+      }
+      : null,
+  };
+}
+
+// 금지 무기가 있는 팔은 액추에이터를 해제 상태로 저장해 무기를 빼도 자동으로 다시 달리지 않게 한다.
+function syncBlockedArmActuators(mech = state.selectedMech, build = state.currentBuild) {
+  if (!build) return build;
+  for (const [componentName, bits] of Object.entries(ARM_ACTUATOR_BITS)) {
+    const pod = armActuatorPod(componentName, build, mech);
+    const toggleable = toggleableArmActuators(pod);
+    if (!toggleable.lowerArm && !toggleable.hand) continue;
+    if (!armActuatorBlockingWeapons(componentName, build, pod).length) continue;
+    build.actuatorState = Math.max(0, number(build.actuatorState))
+      | (toggleable.lowerArm ? bits.lowerArm : 0)
+      | (toggleable.hand ? bits.hand : 0);
   }
-  if (componentName === "right_arm") {
-    if (Number(itemId) === LOWER_ARM_ACTUATOR_ID) {
-      return Boolean(actuatorState & MWO_ACTUATOR_BITS.rightLowerArmRemoved);
+  return build;
+}
+
+// 금지 무기를 장착하면 해제될 현재 장착 액추에이터 슬롯 수.
+function armActuatorSlotsFreedByItem(item, componentName, compDef) {
+  if (!armActuatorBlocksWeapon(item) || !ARM_ACTUATOR_BITS[componentName]) return 0;
+  const toggleable = toggleableArmActuators(armActuatorPod(componentName));
+  return (compDef?.internals || []).reduce((sum, itemId) => {
+    const id = Number(itemId);
+    const removable = (id === LOWER_ARM_ACTUATOR_ID && toggleable.lowerArm)
+      || (id === HAND_ACTUATOR_ID && toggleable.hand);
+    return removable ? sum + Math.max(1, itemSlots(itemById(id))) : sum;
+  }, 0);
+}
+
+function toggleArmActuator(componentName, actuator, { render = true } = {}) {
+  const mech = state.selectedMech;
+  const build = state.currentBuild;
+  const bits = ARM_ACTUATOR_BITS[componentName];
+  const status = armActuatorStatus(componentName, mech, build);
+  const current = status?.[actuator];
+  if (!bits || !current || current.locked) return false;
+  const actuatorState = Math.max(0, number(build.actuatorState));
+  if (current.active) {
+    build.actuatorState = actuatorState
+      | (actuator === "lowerArm" ? bits.lowerArm | bits.hand : bits.hand);
+  } else {
+    const itemId = actuator === "lowerArm" ? LOWER_ARM_ACTUATOR_ID : HAND_ACTUATOR_ID;
+    const compDef = effectiveComponentDefinition(mech, build, componentName);
+    const usage = calculateBuild().componentUsage[componentName] || { slots: 0 };
+    const slotLimit = number(compDef.slots);
+    const reflowableOccupiedUpgradeSlots = Math.max(
+      0,
+      number(usage.occupiedUpgradeSlots) - number(usage.fixedArmorSlots),
+    );
+    const nextSlots = usage.slots - reflowableOccupiedUpgradeSlots + Math.max(1, itemSlots(itemById(itemId)));
+    if (!slotLimit || nextSlots > slotLimit) {
+      if (render) setDropStatus(`Slots ${nextSlots}/${slotLimit}`);
+      return false;
     }
-    if (Number(itemId) === HAND_ACTUATOR_ID) {
-      return Boolean(
-        actuatorState
-        & (MWO_ACTUATOR_BITS.rightLowerArmRemoved | MWO_ACTUATOR_BITS.rightHandRemoved),
-      );
-    }
+    build.actuatorState = actuatorState & ~(actuator === "lowerArm" ? bits.lowerArm : bits.hand);
+    reflowInstalledEquipment();
   }
-  return false;
+  if (render) renderVariant();
+  return true;
+}
+
+function armActuatorTogglesHtml(componentName) {
+  const status = armActuatorStatus(componentName);
+  if (!status) return "";
+  // 왼쪽 정렬한 체크박스 뒤에 액추에이터 장비 표시명을 두는 행으로 표시한다.
+  const button = (actuator, itemId) => {
+    const current = status[actuator];
+    if (!current) return "";
+    const item = itemById(itemId);
+    const label = item?.display_name || item?.name || "";
+    const reason = current.locked
+      ? (status.blockingWeapons.length ? t("mechlab.actuatorBlockedByWeapon") : t("mechlab.actuatorRequiresLowerArm"))
+      : "";
+    return `<button type="button" class="component-actuator-toggle${current.active ? " active" : ""}" data-arm-actuator-toggle="${componentName}:${actuator}" aria-pressed="${current.active ? "true" : "false"}"${current.locked ? " disabled" : ""} title="${escapeHtml(reason ? `${label} - ${reason}` : label)}"><span class="component-actuator-check" aria-hidden="true"></span><span class="component-actuator-label">${escapeHtml(label)}</span></button>`;
+  };
+  return `<div class="component-actuator-toggles">${button("lowerArm", LOWER_ARM_ACTUATOR_ID)}${button("hand", HAND_ACTUATOR_ID)}</div>`;
 }
 
 function effectiveComponentDefinition(mech = state.selectedMech, build = state.currentBuild, componentName) {
@@ -4095,7 +4237,7 @@ function effectiveComponentDefinition(mech = state.selectedMech, build = state.c
     hardpoints = addEcmCapabilityHardpoint(hardpoints);
   }
   const internals = [...(base.internals || []), ...podDefinition.internals]
-    .filter((itemId) => !actuatorIsRemoved(componentName, itemId, build));
+    .filter((itemId) => !actuatorIsRemoved(componentName, itemId, build, pod));
   return {
     ...base,
     hardpoints,
@@ -12674,6 +12816,7 @@ function replaceOmnipod(component, podId) {
   buildComponent.items = (buildComponent.items || [])
     .filter((entry) => itemById(entry.item_id)?.item_type === "engine");
   buildComponent.omnipod = Number(pod.id);
+  syncBlockedArmActuators();
   normalizeEngineHeatSinks(state.selectedMech, state.currentBuild);
   reflowInstalledEquipment();
   return true;
@@ -12935,6 +13078,7 @@ function renderComponent(name, calc, quirkValues, ghostHeatGroups = new Set()) {
         </div>
         <div class="hardpoint-line component-hardpoint-line component-omnipod-hardpoints${hps ? "" : " empty"}">${hps}</div>
       </div>
+      ${armActuatorTogglesHtml(name)}
     `
     : `<div class="hardpoint-line component-hardpoint-line${hps ? "" : " empty"}">${hps}</div>`;
   const internalRows = (compDef.internals || [])
@@ -15992,6 +16136,7 @@ function installWarehouseItemInComponent(item, component, { render = true } = {}
     });
   }
   state.currentBuild.components[component].items.push(buildEntryForItem(item));
+  syncBlockedArmActuators();
   normalizeEngineHeatSinks(state.selectedMech, state.currentBuild);
   if (item.item_type === "engine") reflowInstalledEquipment();
   if (render) renderVariant();
@@ -16168,6 +16313,7 @@ function dropValidation(item, component, source = null) {
   const nextSlots = usage.slots
     - reflowableOccupiedUpgradeSlots
     - replacedEngineSlots
+    - armActuatorSlotsFreedByItem(item, component, compDef)
     + addedItemSlots;
   if (!slotLimit || nextSlots > slotLimit) return `Slots ${nextSlots}/${slotLimit}`;
 
@@ -16674,6 +16820,7 @@ function installDraggedItem(component) {
     }
     state.currentBuild.components[component].items.push(buildEntryForItem(item));
   }
+  syncBlockedArmActuators();
   normalizeEngineHeatSinks(state.selectedMech, state.currentBuild);
   if (item.item_type === "engine") reflowInstalledEquipment();
   clearDragState();
@@ -17694,6 +17841,13 @@ function bindEvents() {
       changeEngineRating(engineRatingButton);
       return;
     }
+    const actuatorToggle = event.target.closest("[data-arm-actuator-toggle]");
+    if (actuatorToggle) {
+      event.preventDefault();
+      const [component, actuator] = actuatorToggle.dataset.armActuatorToggle.split(":");
+      toggleArmActuator(component, actuator);
+      return;
+    }
     const engineSinkRow = event.target.closest("[data-engine-heat-sink-item]");
     if (engineSinkRow) {
       if (event.detail <= 0 || event.detail % 2 !== 0) return;
@@ -18304,6 +18458,9 @@ if (globalThis.__MWOLAB_TEST__) {
     mechSpecialFeatures,
     hasDamageReducingWeaponDoor,
     componentWeaponDoorStatus,
+    armActuatorStatus,
+    toggleArmActuator,
+    stockActuatorState,
     weaponDoorRequiredWeapons,
     weaponDoorTooltipHtml,
     omnipodTooltipHtml,

@@ -961,6 +961,91 @@ test("부위 웨펀도어 아이콘은 현재 무장의 슬롯 Attachment가 도
   }
 });
 
+test("옵니포드 팔 로우 어퍼·핸드는 Toggleable 포드에서만 토글하고 AC·가우스·PPC 계열 무기가 있으면 해제한다", () => {
+  const readData = (file) => JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "public", "data", file),
+    "utf8",
+  ));
+  const mechs = readData("mechs.json");
+  const previous = {
+    equipment: api.state.equipment,
+    loadouts: api.state.loadouts,
+    omnipods: api.state.omnipods,
+    selectedMech: api.state.selectedMech,
+    currentBuild: api.state.currentBuild,
+    initialFittingMode: api.state.initialFittingPreferences.mode,
+  };
+  const stockBuild = (displayName) => {
+    const mech = mechs.find((candidate) => candidate.display_name === displayName);
+    assert.ok(mech, displayName);
+    api.state.initialFittingPreferences.mode = "stock";
+    const build = api.buildForMechSelection(mech);
+    api.state.selectedMech = mech;
+    api.state.currentBuild = build;
+    return { mech, build };
+  };
+  const armInternals = (mech, build, component) => [
+    ...api.effectiveComponentDefinition(mech, build, component).internals,
+  ].map(Number);
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const itemName = (itemId) => api.state.equipment.items[String(itemId)]?.name;
+  try {
+    api.state.equipment = readData("equipment.json");
+    api.state.loadouts = readData("loadouts.json");
+    api.state.omnipods = readData("omnipods.json");
+
+    // ACH-A 기본 로드아웃은 양팔 HandsAndArms이며 포드에 로우 어퍼·핸드가 모두 Toggleable이다.
+    let { mech, build } = stockBuild("ACH-A");
+    let status = api.armActuatorStatus("left_arm", mech, build);
+    assert.deepEqual(
+      plain({ lowerArm: status.lowerArm, hand: status.hand }),
+      { lowerArm: { active: true, locked: false }, hand: { active: true, locked: false } },
+    );
+    assert.ok(armInternals(mech, build, "left_arm").includes(1910));
+    assert.ok(armInternals(mech, build, "left_arm").includes(1911));
+
+    assert.equal(api.toggleArmActuator("left_arm", "hand", { render: false }), true);
+    assert.ok(armInternals(mech, build, "left_arm").includes(1910));
+    assert.ok(!armInternals(mech, build, "left_arm").includes(1911));
+
+    // 로우 어퍼를 해제하면 핸드도 해제되고 다시 달 때까지 핸드 토글은 잠긴다.
+    assert.equal(api.toggleArmActuator("left_arm", "lowerArm", { render: false }), true);
+    status = api.armActuatorStatus("left_arm", mech, build);
+    assert.equal(status.lowerArm.active, false);
+    assert.deepEqual(plain(status.hand), { active: false, locked: true });
+    assert.equal(api.toggleArmActuator("left_arm", "hand", { render: false }), false);
+    assert.equal(api.toggleArmActuator("left_arm", "lowerArm", { render: false }), true);
+    status = api.armActuatorStatus("left_arm", mech, build);
+    assert.equal(status.lowerArm.active, true);
+    assert.deepEqual(plain(status.hand), { active: false, locked: false });
+    assert.equal(api.armActuatorStatus("right_arm", mech, build).hand.active, true);
+
+    // TBR-N 원본 상태는 ArmsOnly지만 ER PPC가 있는 팔은 로우 어퍼를 해제한다.
+    ({ mech, build } = stockBuild("TBR-N"));
+    status = api.armActuatorStatus("left_arm", mech, build);
+    assert.equal(status.hand, null);
+    assert.deepEqual(plain(status.lowerArm), { active: false, locked: true });
+    assert.ok(!armInternals(mech, build, "left_arm").includes(1910));
+    assert.equal(api.toggleArmActuator("left_arm", "lowerArm", { render: false }), false);
+
+    // 금지 무기를 빼도 자동으로 다시 달리지 않고, 토글로 다시 장착한다.
+    build.components.left_arm.items = build.components.left_arm.items
+      .filter((entry) => itemName(entry.item_id) !== "ClanERPPC");
+    assert.deepEqual(plain(api.armActuatorStatus("left_arm", mech, build).lowerArm), { active: false, locked: false });
+    assert.equal(api.toggleArmActuator("left_arm", "lowerArm", { render: false }), true);
+    assert.ok(armInternals(mech, build, "left_arm").includes(1910));
+
+    // 일반 배틀멕 팔의 고정 액추에이터는 토글 대상이 아니다.
+    ({ mech, build } = stockBuild("HBK-4G"));
+    assert.equal(api.armActuatorStatus("left_arm", mech, build), null);
+    assert.ok(armInternals(mech, build, "left_arm").includes(1910));
+  } finally {
+    api.state.initialFittingPreferences.mode = previous.initialFittingMode;
+    delete previous.initialFittingMode;
+    Object.assign(api.state, previous);
+  }
+});
+
 test("옵니포드 툴팁 고정 장비는 히트싱크·점프젯을 달린 부위에, 나머지 멕 고정 장비를 CT에 표시한다", () => {
   const readData = (file) => JSON.parse(fs.readFileSync(
     path.join(__dirname, "..", "public", "data", file),

@@ -784,6 +784,18 @@ def parse_component_internals(comp):
     return internals
 
 
+def parse_component_toggleable_internals(comp):
+    toggleable = []
+    for child in list(comp):
+        if (
+            child.tag == "Internal"
+            and child.attrib.get("ItemID")
+            and maybe_num(child.attrib.get("Toggleable", 0)) == 1
+        ):
+            toggleable.append(int(child.attrib["ItemID"]))
+    return toggleable
+
+
 def parse_component_fixed(comp):
     fixed = []
     for child in list(comp):
@@ -1045,6 +1057,10 @@ def parse_loadouts(
             "components": {},
         }
 
+        actuator_state = root.find("ActuatorState")
+        if actuator_state is not None:
+            loadout["actuator_state"] = attrs(actuator_state)
+
         upgrades = root.find("Upgrades")
         if upgrades is not None:
             for upgrade in list(upgrades):
@@ -1167,6 +1183,7 @@ def parse_detailed_omnipods(zf, localization, hardpoint_slot_counts, hardpoint_w
                         hardpoint_weapon_doors,
                     ),
                     "internals": parse_component_internals(comp),
+                    "toggleable_internals": parse_component_toggleable_internals(comp),
                     "fixed": parse_component_fixed(comp),
                     "quirks": parse_quirks(comp, localization, "omnipod"),
                     "set_bonuses": set_bonuses,
@@ -1234,6 +1251,7 @@ def parse_omnipods(game_data, omnipod_details):
         detail = omnipod_details.get(f"{pod['chassis']}|{pod['set']}|{pod['component']}", {})
         pod["hardpoints"] = detail.get("hardpoints", [])
         pod["internals"] = detail.get("internals", [])
+        pod["toggleable_internals"] = detail.get("toggleable_internals", [])
         pod["fixed"] = detail.get("fixed", [])
         pod["quirks"] = detail.get("quirks", [])
         pod["set_bonuses"] = detail.get("set_bonuses", [])

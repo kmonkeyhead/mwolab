@@ -359,6 +359,54 @@ class ExtractMwoDataTests(unittest.TestCase):
         pods = EXTRACTOR.parse_omnipods(game_data, details)
         self.assertEqual(pods["31533"]["CanEquipECM"], 1)
 
+    def test_omnipod_preserves_toggleable_arm_actuators(self):
+        details = EXTRACTOR.parse_detailed_omnipods(
+            FakeGameData({
+                "Objects/mechs/naga/naga-omnipods.xml": b"""
+                    <OmniPods>
+                      <Set name="nga-ii-prime">
+                        <component name="left_arm">
+                          <Internal ItemID="1909" />
+                          <Internal ItemID="1910" Toggleable="1" />
+                          <Internal ItemID="1911" Toggleable="1" />
+                        </component>
+                      </Set>
+                    </OmniPods>
+                """,
+            }),
+            {},
+            {},
+        )
+        game_data = FakeGameData({
+            "Libs/Items/OmniPods.xml": b"""
+                <OmniPods>
+                  <OmniPod id="31000" chassis="naga" set="nga-ii-prime" component="left_arm" />
+                </OmniPods>
+            """,
+        })
+        pod = EXTRACTOR.parse_omnipods(game_data, details)["31000"]
+        self.assertEqual(pod["internals"], [1909, 1910, 1911])
+        self.assertEqual(pod["toggleable_internals"], [1910, 1911])
+
+    def test_loadout_preserves_source_actuator_state(self):
+        game_data = FakeGameData({
+            "Libs/MechLoadout/vpr-sc.xml": b"""
+                <Loadout MechID="3683" Public="1" Name="VIPER VPR-SC">
+                  <ActuatorState LeftActuatorState="EActuatorState_ArmsOnly" RightActuatorState="EActuatorState_None" />
+                  <ComponentList>
+                    <component Name="centre_torso" Armor="46" OmniPod="31402" />
+                  </ComponentList>
+                </Loadout>
+            """,
+        })
+        mechs = {"3683": {"id": 3683, "name": "vpr-sc", "chassis": "viper"}}
+        loadout = EXTRACTOR.parse_loadouts(game_data, mechs, definitions(), {}, [])["vpr-sc"]
+        self.assertEqual(loadout["actuator_state"], {
+            "LeftActuatorState": "EActuatorState_ArmsOnly",
+            "RightActuatorState": "EActuatorState_None",
+        })
+        self.assertNotIn("actuator_state", self.parse_loadout(loadout_omnipod=31402))
+
     def test_loadout_uses_mdf_omnipod_when_xml_omits_it(self):
         loadout = self.parse_loadout(mdf_omnipod=31402)
         self.assertEqual(loadout["components"]["centre_torso"]["omnipod"], 31402)
