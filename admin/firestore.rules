@@ -171,7 +171,7 @@ service cloud.firestore {
         ])
         && getAfter(usagePath(request.auth.uid)).data.count is int
         && getAfter(usagePath(request.auth.uid)).data.count >= 1
-        && getAfter(usagePath(request.auth.uid)).data.count <= 100
+        && getAfter(usagePath(request.auth.uid)).data.count <= 300
         && getAfter(usagePath(request.auth.uid)).data.lastFittingId == fittingId
         && getAfter(usagePath(request.auth.uid)).data.operation == 'create'
         && getAfter(usagePath(request.auth.uid)).data.updatedAt == request.time
@@ -350,7 +350,7 @@ service cloud.firestore {
         && resource.data.count is int
         && request.resource.data.count is int
         && request.resource.data.count >= 0
-        && request.resource.data.count <= 100
+        && request.resource.data.count <= 300
         && request.resource.data.lastFittingId is string
         && request.resource.data.lastFittingId.size() >= 1
         && request.resource.data.lastFittingId.size() <= 128
@@ -358,7 +358,7 @@ service cloud.firestore {
         && (
           (
             request.resource.data.operation == 'create'
-            && resource.data.count < 100
+            && resource.data.count < 300
             && request.resource.data.count == resource.data.count + 1
             && !exists(fittingPath(request.resource.data.lastFittingId))
             && existsAfter(fittingPath(request.resource.data.lastFittingId))

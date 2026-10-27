@@ -526,7 +526,7 @@ test("추천 핏팅 날짜 캐시는 재접속·빈 결과·손상 데이터·�
   await waitFor(() => published.some((entry) => entry.records[0]?.id === "fresh"));
 });
 
-test("공개 핏팅은 사용자별 원자적 카운터로 100개를 제한하고 탭에는 수량을 표시하지 않는다", () => {
+test("공개 핏팅은 사용자별 원자적 카운터로 300개를 제한하고 탭에는 수량을 표시하지 않는다", () => {
   const client = read("public/firebase-community.js");
   const rules = read("admin/firestore.rules");
   const admin = read("admin/server.mjs");
@@ -534,12 +534,12 @@ test("공개 핏팅은 사용자별 원자적 카운터로 100개를 제한하�
   const maintenanceRules = read("admin/firestore.maintenance.rules");
   const adminPackage = read("admin/package.json");
   const adminReadme = read("admin/README.md");
-  assert.match(client, /const MAX_PUBLIC_FITTINGS = 100/);
+  assert.match(client, /const MAX_PUBLIC_FITTINGS = 300/);
   assert.doesNotMatch(client, /community-tab-count|mineUploadCount|refreshMineUploadCount/);
   assert.match(client, /runTransaction\(db, async \(transaction\) => \{[\s\S]*transaction\.get\(usageRef\)[\s\S]*count >= MAX_PUBLIC_FITTINGS[\s\S]*operation: "create"/);
   assert.match(client, /deleteRemoteFitting[\s\S]*transaction\.get\(usageRef\)[\s\S]*operation: "delete"/);
   assert.match(rules, /function usagePath\(uid\)/);
-  assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count <= 100/);
+  assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count <= 300/);
   assert.match(rules, /validUsageCreateAdvance\(fittingId\)/);
   assert.match(rules, /validUsageDeleteAdvance\(fittingId\)/);
   assert.match(rules, /allow create: if signedInWithGoogle\(\)[\s\S]*request\.resource\.data\.count == 1/);

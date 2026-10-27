@@ -4,7 +4,7 @@ const PAGE_SIZE = 25;
 const FETCH_LIMIT = 100;
 const PAGE_GROUP_SIZE = 5;
 const TITLE_LIMIT = 20;
-const MAX_PUBLIC_FITTINGS = 100;
+const MAX_PUBLIC_FITTINGS = 300;
 const NICKNAME_MIN = 2;
 const NICKNAME_MAX = 20;
 const PILOT_NAME = "Pilot";
@@ -46,7 +46,7 @@ const COPY = {
     unavailable: "Firebase 연결을 사용할 수 없습니다. 잠시 후 다시 시도하세요.",
     httpRequired: "Firebase 연동은 localhost 또는 배포된 웹사이트에서 사용할 수 있습니다.", noFitting: "먼저 멕과 핏팅을 선택하세요.",
     loadFailed: "핏팅 목록을 불러오지 못했습니다.", saveFailed: "핏팅을 저장하지 못했습니다.", localSaveFailed: "이 PC에 핏팅을 저장할 수 없습니다.",
-    deleteFailed: "핏팅을 삭제하지 못했습니다.", uploadLimit: "공개 핏팅은 계정당 최대 100개까지 올릴 수 있습니다.",
+    deleteFailed: "핏팅을 삭제하지 못했습니다.", uploadLimit: "공개 핏팅은 계정당 최대 300개까지 올릴 수 있습니다.",
     firestorePermissionDenied: "Firestore 보안 규칙이 이 작업을 허용하지 않습니다. Firebase Console의 Firestore Database > Rules에 최신 규칙이 게시되었는지 확인하세요.",
     firestoreUnavailable: "Firestore에 연결하지 못했습니다. 잠시 후 다시 시도하세요.", likeFailed: "좋아요를 변경하지 못했습니다.",
     loginFailed: "Google 로그인에 실패했습니다.", unauthorizedDomain: "현재 주소({host})가 Firebase 승인된 도메인이 아닙니다.",
@@ -80,7 +80,7 @@ const COPY = {
     loginRequired: "Google sign-in is required for public saves, uploads, and likes.", likeLoginRequired: "Google sign-in is required to like this fitting.", signInAction: "Sign in", unavailable: "Firebase is unavailable. Try again shortly.",
     httpRequired: "Firebase is available on localhost or the deployed website.", noFitting: "Select a mech and fitting first.", loadFailed: "Could not load fittings.",
     saveFailed: "Could not save the fitting.", localSaveFailed: "Could not save the fitting on this PC.", deleteFailed: "Could not delete the fitting.",
-    uploadLimit: "Each account can upload up to 100 public fittings.",
+    uploadLimit: "Each account can upload up to 300 public fittings.",
     firestorePermissionDenied: "Firestore rules denied this action. Check that the latest rules are published in Firebase Console under Firestore Database > Rules.",
     firestoreUnavailable: "Could not connect to Firestore. Try again shortly.", likeFailed: "Could not update the like.", loginFailed: "Google sign-in failed.",
     unauthorizedDomain: "The current host ({host}) is not authorized.", popupClosed: "The Google sign-in window closed before authentication completed.",

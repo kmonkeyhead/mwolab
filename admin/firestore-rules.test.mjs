@@ -25,7 +25,7 @@ test("Firestore 규칙은 Google 게시와 원자적 소유권·좋아요·게�
   assert.match(rules, /function usagePath\(uid\)/);
   assert.match(rules, /function validUsageCreateAdvance\(fittingId\)/);
   assert.match(rules, /function validUsageDeleteAdvance\(fittingId\)/);
-  assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count <= 100/);
+  assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count <= 300/);
   assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count[\s\S]*== get\(usagePath\(request\.auth\.uid\)\)\.data\.count \+ 1/);
   assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count[\s\S]*== get\(usagePath\(request\.auth\.uid\)\)\.data\.count - 1/);
   assert.match(rules, /match \/publisherUsage\/\{uid\}/);
