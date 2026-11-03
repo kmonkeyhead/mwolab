@@ -891,6 +891,7 @@
 
         <h3>추출 데이터 보존 원칙</h3>
         <ul>
+          <li>쿼크 표시명은 <code>quirk_loc_candidates()</code>의 전체 키 후보를 먼저 조회한 후 앞 45자 후보를 조회한다. 조회 규칙의 기준은 <code>JSON 추출 지침.md</code>이며, 일치 항목이 없으면 기존 대체 표시명을 사용한다.</li>
           <li>원본 속성은 덮어쓰지 않고 필요한 파생 필드를 추가한다.</li>
           <li>무기에는 <code>ammoType</code>, <code>artemisAmmoType</code>, <code>alwaysHasArtemis</code>를 보존한다.</li>
           <li>탄약에는 <code>type</code>, <code>numShots</code>를 보존한다.</li>

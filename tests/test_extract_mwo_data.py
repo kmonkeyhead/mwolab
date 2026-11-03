@@ -48,6 +48,26 @@ def definitions(omnipod=None):
 
 
 class ExtractMwoDataTests(unittest.TestCase):
+    def test_quirk_localization_checks_shortened_key_after_complete_keys(self):
+        name = "ismediumlaserfamily_minheatpenaltylevel_additive"
+        full_key = "qrk_ismediumlaserfamily_minheatpenaltylevel_add"
+        short_key = "qrk_ismediumlaserfamily_minheatpenaltylevel_a"
+        node = EXTRACTOR.ET.fromstring(f'<Quirk name="{name}" value="3" />')
+        result = EXTRACTOR.parse_quirk_node(node, {short_key: "MED LASER FAMILY HSL"})
+        self.assertEqual(result["display_name"], "MED LASER FAMILY HSL")
+        self.assertEqual(result["name"], name)
+        self.assertEqual(result["value"], 3)
+        result = EXTRACTOR.parse_quirk_node(
+            node, {short_key: "SHORT", full_key: "COMPLETE"}
+        )
+        self.assertEqual(result["display_name"], "COMPLETE")
+        result = EXTRACTOR.parse_quirk_node(
+            node, {short_key: "SHORT", f"ui_quirk_{name}": "UI COMPLETE"}
+        )
+        self.assertEqual(result["display_name"], "UI COMPLETE")
+        result = EXTRACTOR.parse_quirk_node(node, {})
+        self.assertEqual(result["display_name"], EXTRACTOR.fallback_quirk_name(name))
+
     def test_parse_xml_keeps_valid_input_unchanged(self):
         data = b'<root><Quirk name="x" value="-0.2" /></root>'
         diagnostics = io.StringIO()

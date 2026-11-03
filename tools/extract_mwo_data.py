@@ -540,7 +540,9 @@ def quirk_loc_candidates(name):
             candidates.append(f"ui_quirk_{base.replace(old, new)}")
         if old in short:
             candidates.append(f"qrk_{short.replace(old, new)}")
-    return candidates
+    # Check complete keys first, then the shortened keys present in the local table.
+    candidates.extend(key[:45] for key in list(candidates) if len(key) > 45)
+    return list(dict.fromkeys(candidates))
 
 
 def fallback_quirk_name(name):
