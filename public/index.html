@@ -942,6 +942,15 @@
     </div>
 
     <div id="equipment-tooltip" class="equipment-tooltip" role="tooltip" hidden></div>
+    <div id="mechlab-variant-overlay" class="build-actions-overlay" hidden>
+      <section class="build-actions-dialog mechlab-variant-dialog" role="dialog" aria-modal="true" aria-labelledby="mechlab-variant-title">
+        <header>
+          <h2 id="mechlab-variant-title" data-i18n="mechlab.variants">파생형</h2>
+          <button id="close-mechlab-variants" class="build-actions-close" type="button" aria-label="파생형 선택 닫기" data-i18n-aria-label="mechlab.closeVariants">X</button>
+        </header>
+        <div id="mechlab-variant-options" class="build-actions-list mechlab-variant-options"></div>
+      </section>
+    </div>
 
     <script src="mwo-codec.js"></script>
     <script src="mwo-skill-codec.js?v=20260920-1"></script>

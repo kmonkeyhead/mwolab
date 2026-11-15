@@ -5201,6 +5201,7 @@ body.local-build-open {
 body.mech-sort-open,
 body.mech-filter-open,
 body.build-actions-open,
+body.mechlab-variant-open,
 body.skill-open,
 body.ui-settings-open {
   overflow: hidden;
@@ -5277,6 +5278,38 @@ body.ui-settings-open {
 .build-actions-cancel {
   justify-self: end;
   min-width: 6rem;
+}
+
+.mechlab-variant-button {
+  min-height: 2.1rem;
+  border-color: #886044;
+  background: #523822;
+  color: #f2dac3;
+  font-weight: 900;
+}
+
+.mechlab-variant-button:hover,
+.mechlab-variant-button:focus-visible {
+  border-color: #c08b60;
+  background: #704c2e;
+  color: #fff0df;
+}
+
+.mechlab-variant-dialog {
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 3rem);
+  grid-template-rows: auto minmax(0, 1fr);
+  border-color: #886044;
+}
+
+.mechlab-variant-options {
+  overflow-y: auto;
+}
+
+.mechlab-variant-options button[aria-current="true"] {
+  border-color: #bc895b;
+  background: #523822;
+  color: #fff0df;
 }
 
 .mech-filter-dialog {

@@ -5311,3 +5311,231 @@ test("스킬 EXPORT는 91개까지 허용하고 초과·미지원 노드는 코�
   assert.equal(empty.code, "");
   assert.equal(empty.errors.length, 0);
 });
+
+function variantSwapTestApi(options = {}) {
+  const instance = loadMechLab(options);
+  for (const name of ["mechs", "equipment", "loadouts", "omnipods"]) {
+    instance.state[name] = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "public", "data", `${name}.json`), "utf8"));
+  }
+  instance.state.initialFittingPreferences.mode = "stock";
+  return instance;
+}
+
+test("파생형 연결은 명시 관계만 양방향으로 사용하고 다른 섀시와 자기 참조를 제외한다", () => {
+  const local = variantSwapTestApi();
+  for (const [a, b] of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]]) {
+    assert.ok(local.mechlabRelatedVariants(a).some((mech) => mech.id === b));
+    assert.ok(local.mechlabRelatedVariants(b).some((mech) => mech.id === a));
+  }
+  assert.equal(local.mechlabRelatedVariants(862).some((mech) => mech.id === 390), false);
+  assert.equal(local.mechlabRelatedVariants(3697).some((mech) => mech.id === 275), false);
+  assert.equal(local.mechlabRelatedVariants(643).some((mech) => mech.id === 643), false);
+  local.state.mechs = [
+    { id: 10, name: "X", chassis: "x", definition: { stats: {} } },
+    { id: 11, name: "X(S)", chassis: "x", definition: { stats: {} } },
+  ];
+  assert.equal(local.mechlabRelatedVariants(10).length, 0);
+});
+
+test("사용자가 지정한 다섯 쌍은 양방향 스왑 시 실제 장비와 장갑을 보존한다", () => {
+  const local = variantSwapTestApi();
+  for (const pair of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]]) {
+    for (const [from, to] of [pair, [...pair].reverse()]) {
+      for (const mode of ["stock", "strip"]) {
+        local.state.initialFittingPreferences.mode = mode;
+        const mech = local.state.mechs.find((entry) => entry.id === from);
+        const build = local.buildForMechSelection(mech);
+        const tab = local.addMechlabTabRecord(mech, build);
+        const before = JSON.stringify(build);
+        const candidate = local.prepareMechlabVariantSwap(tab.id, to);
+        assert.equal(candidate.error, undefined, `${from} -> ${to} (${mode}): ${candidate.error}`);
+        assert.equal(JSON.stringify(build), before);
+        assert.deepEqual(JSON.parse(JSON.stringify(candidate.build.components)), JSON.parse(JSON.stringify(build.components)));
+        assert.deepEqual(JSON.parse(JSON.stringify(candidate.build.rearArmor)), JSON.parse(JSON.stringify(build.rearArmor)));
+        assert.deepEqual(JSON.parse(JSON.stringify(candidate.build.upgrades)), JSON.parse(JSON.stringify(build.upgrades)));
+        assert.deepEqual(JSON.parse(JSON.stringify(candidate.build.engineHeatSinks)), JSON.parse(JSON.stringify(build.engineHeatSinks)));
+        assert.equal(candidate.build.actuatorState, build.actuatorState);
+        assert.equal(candidate.build.mechId, to);
+        local.state.mechlabTabs = [];
+      }
+    }
+  }
+});
+
+test("비활성 탭 스왑은 해당 탭만 교체하고 공유 출처를 해제한다", () => {
+  const local = variantSwapTestApi();
+  const firstMech = local.state.mechs.find((entry) => entry.id === 655);
+  const secondMech = local.state.mechs.find((entry) => entry.id === 854);
+  const first = local.addMechlabTabRecord(firstMech, local.buildForMechSelection(firstMech));
+  first.communitySource = { id: "public-original" };
+  const second = local.addMechlabTabRecord(secondMech, local.buildForMechSelection(secondMech));
+  const untouched = second.build;
+  const prepared = local.prepareMechlabVariantSwap(first.id, 656);
+  assert.equal(local.state.activeMechlabTabId, second.id);
+  assert.equal(local.state.currentBuild, untouched);
+  assert.equal(local.commitMechlabVariantSwap(prepared), true);
+  assert.equal(local.state.activeMechlabTabId, first.id);
+  assert.equal(first.mechId, 656);
+  assert.equal(first.communitySource, undefined);
+  assert.equal(second.build, untouched);
+  assert.equal(local.state.currentBuild, first.build);
+  assert.equal(local.buildAsMwoLoadout().chassisId, 656);
+});
+
+test("파생형의 낮은 장갑 한도는 스왑을 거부하고 기존 탭과 선택을 보존한다", () => {
+  const local = variantSwapTestApi();
+  const mech = local.state.mechs.find((entry) => entry.id === 455);
+  const build = local.buildForMechSelection(mech);
+  build.components.right_arm.armor = 62;
+  const tab = local.addMechlabTabRecord(mech, build);
+  const before = JSON.stringify(tab);
+  const prepared = local.prepareMechlabVariantSwap(tab.id, 380);
+  assert.match(prepared.error, /62\/60/);
+  assert.equal(local.commitMechlabVariantSwap(prepared), false);
+  assert.equal(JSON.stringify(tab), before);
+  assert.equal(local.state.currentBuild, build);
+  assert.equal(local.state.selectedMech, mech);
+});
+
+test("파생형은 활성 피팅의 TOOLS 아래 버튼으로만 열리고 이름을 ID순으로 표시한다", () => {
+  let focused = 0;
+  const trigger = { isConnected: true, setAttribute() {}, focus() { focused++; } };
+  const options = { dataset: {}, innerHTML: "", querySelector() { return { focus() { focused++; } }; } };
+  const overlay = { hidden: true };
+  const list = { innerHTML: "" };
+  const local = variantSwapTestApi({ elements: {
+    "mechlab-fitting-tabs": { hidden: false }, "mechlab-fitting-tab-list": list,
+    "add-mechlab-fitting-tab": { classList: { toggle() {} }, setAttribute() {} },
+    "mechlab-variant-overlay": overlay, "mechlab-variant-options": options,
+    "open-mechlab-variants": trigger,
+  } });
+  for (const id of [655, 854]) {
+    const mech = local.state.mechs.find((entry) => entry.id === id);
+    local.addMechlabTabRecord(mech, local.buildForMechSelection(mech));
+  }
+  local.state.mechlabBrowseMode = false;
+  local.renderMechlabFittingTabs();
+  assert.doesNotMatch(list.innerHTML, /data-mechlab-variant|mechlab-fitting-tab-variants/);
+  const panel = local.renderMechlabActionPanel();
+  assert.match(panel, /class="mechlab-variant-button"/);
+  assert.ok(panel.indexOf('data-mechlab-action="tools"') < panel.indexOf('data-mechlab-action="variants"'));
+  assert.ok(panel.indexOf('data-mechlab-action="variants"') < panel.indexOf('class="loadout-code-actions"'));
+  const activeId = local.state.activeMechlabTabId;
+  const build = local.state.currentBuild;
+  local.openMechlabVariantDialog(trigger);
+  assert.equal(overlay.hidden, false);
+  assert.equal(options.dataset.tabId, activeId);
+  assert.match(options.innerHTML, /data-mechlab-variant-target="854" aria-current="true" aria-disabled="true"/);
+  const ids = [...options.innerHTML.matchAll(/data-mechlab-variant-target="(\d+)"/g)].map((match) => Number(match[1]));
+  assert.deepEqual(ids, [...ids].sort((a,b) => a-b));
+  assert.ok(ids.includes(737));
+  const labels = [...options.innerHTML.matchAll(/>([^<>]+)<\/button>/g)].map((match) => match[1]);
+  assert.deepEqual(labels, ids.map((id) => local.state.mechs.find((mech) => mech.id === id).display_name));
+  assert.equal(local.state.activeMechlabTabId, activeId);
+  assert.equal(local.state.currentBuild, build);
+  local.closeMechlabVariantDialog({ restoreFocus: true });
+  assert.equal(overlay.hidden, true);
+  assert.equal(focused, 2);
+  local.state.mechlabPendingTabIndex = local.state.mechlabTabs.length;
+  assert.doesNotMatch(local.renderMechlabActionPanel(), /data-mechlab-action="variants"/);
+  local.state.mechlabPendingTabIndex = null;
+  local.state.mechlabTabs = [];
+  const unrelated = { id: 99999, chassis: "unrelated", definition: { stats: {} } };
+  local.state.mechs = [unrelated];
+  local.addMechlabTabRecord(unrelated, { mechId: unrelated.id });
+  assert.doesNotMatch(local.renderMechlabActionPanel(), /data-mechlab-action="variants"/);
+});
+
+test("파생형 팝업은 현재 선택 무변경, 장착불가 보호, 닫기와 포커스 순환을 제공한다", () => {
+  const handlers = {};
+  let focused = "";
+  const trigger = { isConnected: true, setAttribute() {}, focus() { focused = "trigger"; } };
+  const close = { addEventListener(type, fn) { handlers.close = fn; }, focus() { focused = "close"; } };
+  const current = { focus() { focused = "current"; } };
+  const options = { dataset: {}, innerHTML: "", addEventListener(type, fn) { handlers[type] = fn; }, querySelector() { return current; } };
+  const overlay = { hidden: true, addEventListener(type, fn) { handlers['overlay-' + type] = fn; }, querySelectorAll() { return [close, current]; }, contains() { return false; } };
+  const status = { textContent: "" };
+  const local = variantSwapTestApi({ elements: {
+    "mechlab-variant-overlay": overlay, "mechlab-variant-options": options,
+    "open-mechlab-variants": trigger, "close-mechlab-variants": close, "data-status": status,
+  } });
+  const mech = local.state.mechs.find((entry) => entry.id === 455);
+  const build = local.buildForMechSelection(mech);
+  build.components.right_arm.armor = 62;
+  const tab = local.addMechlabTabRecord(mech, build);
+  tab.communitySource = { id: "source" };
+  local.state.mechlabBrowseMode = false;
+  local.bindMechlabVariantDialogEvents();
+  const before = JSON.stringify(tab);
+  local.openMechlabVariantDialog(trigger);
+  handlers.click({ target: { closest: () => ({ getAttribute: () => "true" }) } });
+  assert.equal(overlay.hidden, true);
+  assert.equal(focused, "trigger");
+  assert.equal(JSON.stringify(tab), before);
+  local.openMechlabVariantDialog(trigger);
+  handlers.click({ target: { closest: () => ({ getAttribute: () => null, dataset: { mechlabVariantTarget: "380" } }) } });
+  assert.match(status.textContent, /62\/60/);
+  assert.equal(JSON.stringify(tab), before);
+  for (const action of ["close", "backdrop", "escape"]) {
+    local.openMechlabVariantDialog(trigger);
+    if (action === "close") handlers.close();
+    if (action === "backdrop") handlers['overlay-click']({ target: overlay });
+    if (action === "escape") handlers['overlay-keydown']({ key: "Escape", preventDefault() {}, stopPropagation() {} });
+    assert.equal(overlay.hidden, true);
+    assert.equal(focused, "trigger");
+  }
+  local.openMechlabVariantDialog(trigger);
+  let prevented = 0;
+  handlers['overlay-keydown']({ key: "Tab", shiftKey: false, preventDefault() { prevented++; } });
+  assert.equal(focused, "close");
+  handlers['overlay-keydown']({ key: "Tab", shiftKey: true, preventDefault() { prevented++; } });
+  assert.equal(focused, "current");
+  assert.equal(prevented, 2);
+});
+
+test("모바일에서는 파생형 버튼과 팝업을 제공하지 않는다", () => {
+  const overlay = { hidden: true };
+  const local = variantSwapTestApi({ mobile: true, elements: {
+    "mechlab-variant-overlay": overlay, "mechlab-variant-options": {},
+  } });
+  const mech = local.state.mechs.find((entry) => entry.id === 655);
+  local.addMechlabTabRecord(mech, local.buildForMechSelection(mech));
+  local.state.mechlabBrowseMode = false;
+  assert.doesNotMatch(local.renderMechlabActionPanel(), /data-mechlab-action="variants"/);
+  local.openMechlabVariantDialog();
+  assert.equal(overlay.hidden, true);
+});
+
+test("옴니 파생형 스왑은 대상 CT를 적용하고 나머지 포드와 장비를 보존한다", () => {
+  const local = variantSwapTestApi();
+  for (const [from, to] of [[290, 291], [3832, 3833], [3833, 3832]]) {
+    const mech = local.state.mechs.find((entry) => entry.id === from);
+    const build = local.buildForMechSelection(mech);
+    const tab = local.addMechlabTabRecord(mech, build);
+    const before = JSON.stringify(build);
+    const prepared = local.prepareMechlabVariantSwap(tab.id, to);
+    assert.equal(prepared.error, undefined, `${from} -> ${to}: ${prepared.error}`);
+    const target = local.state.mechs.find((entry) => entry.id === to);
+    assert.equal(prepared.build.components.centre_torso.omnipod, local.state.loadouts[target.stock_loadout].components.centre_torso.omnipod);
+    for (const [name, component] of Object.entries(build.components)) {
+      assert.deepEqual(JSON.parse(JSON.stringify(prepared.build.components[name].items)), JSON.parse(JSON.stringify(component.items)));
+      assert.equal(prepared.build.components[name].armor, component.armor);
+      if (name !== "centre_torso") assert.equal(prepared.build.components[name].omnipod, component.omnipod);
+    }
+    assert.equal(JSON.stringify(build), before);
+  }
+});
+
+test("스왑 정규화가 엔진 히트싱크나 액추에이터를 바꾸려 하면 원본을 보존한다", () => {
+  const local = variantSwapTestApi();
+  const mech = local.state.mechs.find((entry) => entry.id === 290);
+  const build = local.buildForMechSelection(mech);
+  // An unresolved legacy engine heat-sink layout must not be silently migrated by a swap.
+  delete build.engineHeatSinks;
+  const tab = local.addMechlabTabRecord(mech, build);
+  const before = JSON.stringify(tab);
+  const prepared = local.prepareMechlabVariantSwap(tab.id, 291);
+  assert.ok(prepared.error);
+  assert.equal(local.commitMechlabVariantSwap(prepared), false);
+  assert.equal(JSON.stringify(tab), before);
+});

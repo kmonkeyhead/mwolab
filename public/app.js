@@ -26,6 +26,10 @@ let mechlabScale = 1;
 let mechlabScaleObserver = null;
 let mechlabScaleFrame = 0;
 let mechlabFittingTabSequence = 0;
+let mechlabVariantGroupCache = null;
+let mechlabVariantDialogTrigger = null;
+// Explicit relationships supplied by the user; names and suffixes are not keys.
+const MECHLAB_VARIANT_PAIRS = [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
 let mechFilterTrigger = null;
@@ -266,6 +270,12 @@ const TEXT = {
     "mechlab.fittingTabs": "멕랩 핏팅 탭",
     "mechlab.addFittingTab": "핏팅 탭 추가",
     "mechlab.closeFittingTab": "{mech} 핏팅 탭 닫기",
+    "mechlab.variants": "파생형",
+    "mechlab.closeVariants": "파생형 선택 닫기",
+    "mechlab.variantSwapBlocked": "현재 장비를 유지할 수 없어 스왑하지 않았습니다: {reason}",
+    "mechlab.variantSwapPreserve": "장비·장갑·업그레이드 또는 액추에이터 변경이 필요합니다.",
+    "mechlab.variantSwapArmor": "{component} 장갑 {used}/{limit}",
+    "mechlab.variantSwapEquipment": "{component}: {item} 장착 조건 불일치",
     "mechlab.maxFittingTabs": "핏팅 탭은 최대 {max}개까지 열 수 있습니다.",
     "mechlab.ghostHeatWarning": "고스트 힛 발생 가능",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
@@ -927,6 +937,12 @@ const TEXT = {
     "mechlab.fittingTabs": "MechLab fitting tabs",
     "mechlab.addFittingTab": "Add fitting tab",
     "mechlab.closeFittingTab": "Close {mech} fitting tab",
+    "mechlab.variants": "VARIANTS",
+    "mechlab.closeVariants": "Close variant selection",
+    "mechlab.variantSwapBlocked": "Swap cancelled to preserve the current equipment: {reason}",
+    "mechlab.variantSwapPreserve": "Equipment, armor, upgrades, or actuators would need to change.",
+    "mechlab.variantSwapArmor": "{component} armor {used}/{limit}",
+    "mechlab.variantSwapEquipment": "{component}: {item} cannot be fitted",
     "mechlab.maxFittingTabs": "You can open up to {max} fitting tabs.",
     "mechlab.ghostHeatWarning": "Ghost heat possible",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
@@ -4272,6 +4288,133 @@ function effectiveDefinition(mech = state.selectedMech, build = state.currentBui
   };
 }
 
+function mechlabRelatedVariants(mechId) {
+  if (mechlabVariantGroupCache?.mechs !== state.mechs) {
+    const byId = new Map(state.mechs.map((mech) => [String(mech.id), mech]));
+    const edges = new Map();
+    const connect = (left, right) => {
+      const a = byId.get(String(left));
+      const b = byId.get(String(right));
+      // A parent reference is a relationship, not proof of fitting equivalence.
+      if (!a || !b || a.id === b.id || !a.chassis || a.chassis !== b.chassis) return;
+      for (const [source, target] of [[a, b], [b, a]]) {
+        const key = String(source.id);
+        if (!edges.has(key)) edges.set(key, new Set());
+        edges.get(key).add(String(target.id));
+      }
+    };
+    state.mechs.forEach((mech) => connect(mech.id, mech.definition?.stats?.VariantParent));
+    MECHLAB_VARIANT_PAIRS.forEach(([a, b]) => connect(a, b));
+    const groups = new Map();
+    for (const start of edges.keys()) {
+      if (groups.has(start)) continue;
+      const visited = new Set();
+      const pending = [start];
+      while (pending.length) {
+        const id = pending.pop();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        for (const next of edges.get(id) || []) pending.push(next);
+      }
+      const group = [...visited].map((id) => byId.get(id)).sort((a, b) => (
+        String(a.display_name || a.name).localeCompare(String(b.display_name || b.name), "en", { numeric: true })
+        || Number(a.id) - Number(b.id)
+      ));
+      visited.forEach((id) => groups.set(id, group));
+    }
+    mechlabVariantGroupCache = { mechs: state.mechs, groups };
+  }
+  return (mechlabVariantGroupCache.groups.get(String(mechId)) || [])
+    .filter((mech) => String(mech.id) !== String(mechId));
+}
+
+function mechlabVariantBuildWarnings(mech, build) {
+  const previousMech = state.selectedMech;
+  const previousBuild = state.currentBuild;
+  try {
+    state.selectedMech = mech;
+    // Calculation helpers may initialize fields; never evaluate a live tab build.
+    state.currentBuild = JSON.parse(JSON.stringify(build));
+    const warnings = calculateBuild().warnings;
+    const definition = effectiveDefinition(mech, state.currentBuild);
+    const capabilities = selectedMechEquipmentCapabilities();
+    for (const name of COMPONENT_ORDER) {
+      const component = state.currentBuild.components[name];
+      if (!component) continue;
+      const limit = componentArmorCapacity(name, definition.components?.[name]);
+      const used = number(component.armor) + number(state.currentBuild.rearArmor?.[name]);
+      if (used > limit) warnings.push(t("mechlab.variantSwapArmor", { component: MECHLAB_COMPONENT_NAMES[name] || name, used, limit }));
+      if (component.omnipod) validateMwoOmnipod(mech, name, component.omnipod);
+      for (const entry of component.items || []) {
+        const item = itemById(entry.item_id);
+        if (item && (!equipmentMatchesSelectedMechCapabilities(item, capabilities) || !heatSinkMatchesUpgrade(item))) {
+          warnings.push(t("mechlab.variantSwapEquipment", { component: MECHLAB_COMPONENT_NAMES[name] || name, item: item.display_name || item.name }));
+        }
+      }
+    }
+    return warnings;
+  } finally {
+    state.selectedMech = previousMech;
+    state.currentBuild = previousBuild;
+  }
+}
+
+function prepareMechlabVariantSwap(tabId, targetId) {
+  const tab = state.mechlabTabs.find((entry) => entry.id === tabId);
+  const source = tab && mechById(tab.mechId);
+  const target = mechlabRelatedVariants(tab?.mechId).find((mech) => String(mech.id) === String(targetId));
+  if (!tab?.build || !source || !target) return { error: t("mechlab.variantSwapPreserve") };
+  const original = tab.id === state.activeMechlabTabId && String(state.selectedMech?.id) === String(tab.mechId)
+    ? state.currentBuild : tab.build;
+  if (!original || hasFixedOmnipods(source) !== hasFixedOmnipods(target)) return { error: t("mechlab.variantSwapPreserve") };
+  try {
+    const build = JSON.parse(JSON.stringify(original));
+    build.mechId = target.id;
+    build.loadoutName = target.stock_loadout;
+    if (hasFixedOmnipods(target)) {
+      // CT is fixed to the destination variant; the other installed pods stay put.
+      const targetLoadout = loadoutForMech(target);
+      build.components.centre_torso.omnipod = omnipodId(targetLoadout.components?.centre_torso?.omnipod);
+      for (const key of ["armor", "structure", "heatsinks"]) {
+        if (String(build.upgrades?.[key]?.ItemID || "") !== String(targetLoadout.upgrades?.[key]?.ItemID || "")) {
+          return { error: t("mechlab.variantSwapPreserve") };
+        }
+      }
+    }
+    const normalized = applyFixedOmnipods(target, JSON.parse(JSON.stringify(build)));
+    if (JSON.stringify(normalized) !== JSON.stringify(build)) return { error: t("mechlab.variantSwapPreserve") };
+    const existingWarnings = new Set(mechlabVariantBuildWarnings(source, original));
+    const newWarnings = mechlabVariantBuildWarnings(target, build).filter((warning) => !existingWarnings.has(warning));
+    if (newWarnings.length) return { error: newWarnings.join(" / ") };
+    return { tab, mech: target, build };
+  } catch (error) {
+    return { error: error.message || t("mechlab.variantSwapPreserve") };
+  }
+}
+
+function commitMechlabVariantSwap(prepared) {
+  if (prepared.error || !prepared.tab || !prepared.mech || !prepared.build) return false;
+  rememberActiveMechlabTabBuild();
+  state.activeMechlabTabId = prepared.tab.id;
+  clearEmptyMechlabTabSlotFocus();
+  replaceActiveMechlabTabRecord(prepared.mech, prepared.build);
+  return true;
+}
+
+function swapMechlabVariant(tabId, targetId) {
+  const prepared = prepareMechlabVariantSwap(tabId, targetId);
+  closeMechlabVariantDialog({ restoreFocus: true });
+  if (prepared.error) {
+    $("data-status").textContent = t("mechlab.variantSwapBlocked", { reason: prepared.error });
+    return false;
+  }
+  preserveCurrentFittingHistoryEntry();
+  commitMechlabVariantSwap(prepared);
+  openMechlabTab(prepared.tab.id);
+  $("open-mechlab-variants")?.focus();
+  return true;
+}
+
 function activeMechlabTab() {
   return state.mechlabTabs.find((tab) => tab.id === state.activeMechlabTabId) || null;
 }
@@ -4431,6 +4574,7 @@ function restoreTabMechSelection(tabName) {
 }
 
 function setMainTab(tabName) {
+  closeMechlabVariantDialog();
   if (!MAIN_TAB_NAMES.has(tabName)) tabName = "mechlab";
   rememberActiveTabMechSelection();
   const isCompareTab = tabName === "compare";
@@ -8575,6 +8719,7 @@ function renderMechlabActionPanel() {
       <button id="open-simulation" class="simulation-open-button" type="button" data-mechlab-action="simulation">${t("simulation.open")}</button>
       <button id="open-skills" class="skill-apply-button${skillsActive ? " active" : ""}" type="button" data-mechlab-action="skills" aria-pressed="${skillsActive}">${t("skills.open")}</button>
       <button id="open-build-actions" class="mechlab-tool-button" type="button" data-mechlab-action="tools">${t("mechlab.tools")}</button>
+      ${activeMechlabVariantTab() ? `<button id="open-mechlab-variants" class="mechlab-variant-button" type="button" data-mechlab-action="variants" aria-haspopup="dialog" aria-controls="mechlab-variant-overlay" aria-expanded="false">${t("mechlab.variants")}</button>` : ""}
       <div class="loadout-code-actions">
         <button id="import-loadout-code" type="button" data-mechlab-action="import">${t("loadout.import")}</button>
         <button id="export-loadout-code" type="button" data-mechlab-action="export">${t("loadout.export")}</button>
@@ -13457,7 +13602,87 @@ function mechlabFittingTabLabels() {
   });
 }
 
+function activeMechlabVariantTab() {
+  const tab = activeMechlabTab();
+  return !globalThis.__MWOLAB_MOBILE__ && state.activeMainTab === "mechlab"
+    && !state.mechlabBrowseMode && !hasFocusedEmptyMechlabTabSlot()
+    && tab && state.currentBuild && String(tab.mechId) === String(state.selectedMech?.id)
+    && mechlabRelatedVariants(tab.mechId).length ? tab : null;
+}
+
+function closeMechlabVariantDialog({ restoreFocus = false } = {}) {
+  const trigger = mechlabVariantDialogTrigger;
+  mechlabVariantDialogTrigger = null;
+  const overlay = $("mechlab-variant-overlay");
+  if (overlay) overlay.hidden = true;
+  document.body.classList.remove("mechlab-variant-open");
+  trigger?.setAttribute("aria-expanded", "false");
+  if (restoreFocus) {
+    const target = trigger?.isConnected ? trigger : $("open-mechlab-variants");
+    target?.focus();
+  }
+}
+
+function openMechlabVariantDialog(trigger = $("open-mechlab-variants")) {
+  const overlay = $("mechlab-variant-overlay");
+  const list = $("mechlab-variant-options");
+  const tab = activeMechlabVariantTab();
+  if (!overlay || !list || !tab) return;
+  closeMechlabVariantDialog();
+  mechlabVariantDialogTrigger = trigger;
+  list.dataset.tabId = tab.id;
+  const entries = [mechById(tab.mechId), ...mechlabRelatedVariants(tab.mechId)]
+    .filter(Boolean).sort((a, b) => Number(a.id) - Number(b.id));
+  list.innerHTML = entries.map((mech) => {
+    const current = String(mech.id) === String(tab.mechId);
+    return `<button type="button" data-mechlab-variant-target="${escapeHtml(mech.id)}"${current ? ' aria-current="true" aria-disabled="true"' : ""}>${escapeHtml(mech.display_name || mech.name)}</button>`;
+  }).join("");
+  overlay.hidden = false;
+  document.body.classList.add("mechlab-variant-open");
+  trigger?.setAttribute("aria-expanded", "true");
+  list.querySelector('[aria-current="true"]')?.focus();
+}
+
+function bindMechlabVariantDialogEvents() {
+  const overlay = $("mechlab-variant-overlay");
+  const list = $("mechlab-variant-options");
+  if (!overlay || !list) return;
+  $("close-mechlab-variants").addEventListener("click", () => closeMechlabVariantDialog({ restoreFocus: true }));
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeMechlabVariantDialog({ restoreFocus: true });
+  });
+  list.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-mechlab-variant-target]");
+    if (option?.getAttribute("aria-current") === "true") {
+      closeMechlabVariantDialog({ restoreFocus: true });
+      return;
+    }
+    if (option) swapMechlabVariant(list.dataset.tabId, option.dataset.mechlabVariantTarget);
+  });
+  overlay.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMechlabVariantDialog({ restoreFocus: true });
+      return;
+    }
+    if (event.key === "Tab") {
+      const buttons = [...overlay.querySelectorAll("button:not([disabled])")];
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !overlay.contains(document.activeElement))) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+  });
+}
+
 function renderMechlabFittingTabs() {
+  closeMechlabVariantDialog();
   const rail = $("mechlab-fitting-tabs");
   const list = $("mechlab-fitting-tab-list");
   const addButton = $("add-mechlab-fitting-tab");
@@ -16978,6 +17203,7 @@ function removeDraggedItem() {
 }
 
 function bindEvents() {
+  bindMechlabVariantDialogEvents();
   window.addEventListener("popstate", () => {
     changeLanguage(detectLanguage(), "none");
     void applyMechNavigationFromLocation();
@@ -17236,6 +17462,11 @@ function bindEvents() {
     renderSimulationGroupStatus();
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && mechlabVariantDialogTrigger) {
+      event.preventDefault();
+      closeMechlabVariantDialog({ restoreFocus: true });
+      return;
+    }
     if (state.weaponDetail.open) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -17937,6 +18168,7 @@ function bindEvents() {
       else if (action === "local-save") openLocalBuildDialog("save");
       else if (action === "local-load") openLocalBuildDialog("load");
       else if (action === "tools") openBuildActionsDialog();
+      else if (action === "variants") openMechlabVariantDialog(mechlabAction);
       return;
     }
     const engineRatingButton = event.target.closest("[data-engine-rating-delta]");
@@ -18398,6 +18630,14 @@ if (globalThis.__MWOLAB_TEST__) {
     closeMechlabTabRecord,
     setActiveMechlabTabBuild,
     mechlabFittingTabLabels,
+    mechlabRelatedVariants,
+    prepareMechlabVariantSwap,
+    commitMechlabVariantSwap,
+    renderMechlabFittingTabs,
+    renderMechlabActionPanel,
+    openMechlabVariantDialog,
+    closeMechlabVariantDialog,
+    bindMechlabVariantDialogEvents,
     number,
     sortChassisGroups,
     isRocketLauncher,
