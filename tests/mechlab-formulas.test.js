@@ -5323,13 +5323,27 @@ function variantSwapTestApi(options = {}) {
 
 test("파생형 연결은 명시 관계만 양방향으로 사용하고 다른 섀시와 자기 참조를 제외한다", () => {
   const local = variantSwapTestApi();
-  for (const [a, b] of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]]) {
+  const sources = local.mechlabVariantRelationSources();
+  assert.ok(sources.table.some(([a, b]) => a === 655 && b === 656));
+  assert.ok(sources.user.some(([a, b]) => a === 655 && b === 656));
+  const withoutTable = local.mechlabVariantRelationSources([]);
+  assert.equal(withoutTable.table.length, 0);
+  assert.deepEqual(withoutTable.user, sources.user);
+  withoutTable.user[0][0] = -1;
+  assert.equal(local.mechlabVariantRelationSources().user[0][0], 655);
+  for (const [a, b] of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737], [595, 912], [878, 879], [596, 944], [733, 732], [736, 904], [3627, 3697], [3698, 3628], [168, 920], [3711, 3659], [874, 365], [577, 889], [3716, 3664], [968, 108], [994, 715], [26, 916], [3718, 3671], [900, 52], [948, 276], [643, 669], [840, 839], [3661, 3713], [982, 544], [753, 776], [993, 610], [3662, 3714], [4, 873], [981, 139], [908, 246], [885, 337]]) {
     assert.ok(local.mechlabRelatedVariants(a).some((mech) => mech.id === b));
     assert.ok(local.mechlabRelatedVariants(b).some((mech) => mech.id === a));
   }
   assert.equal(local.mechlabRelatedVariants(862).some((mech) => mech.id === 390), false);
   assert.equal(local.mechlabRelatedVariants(3697).some((mech) => mech.id === 275), false);
   assert.equal(local.mechlabRelatedVariants(643).some((mech) => mech.id === 643), false);
+  for (const id of [4, 76, 873]) {
+    const related = local.mechlabRelatedVariants(id).map((mech) => mech.id);
+    for (const other of [4, 76, 873].filter((entry) => entry !== id)) {
+      assert.ok(related.includes(other), `${id} must include ${other} through table and user relationships`);
+    }
+  }
   local.state.mechs = [
     { id: 10, name: "X", chassis: "x", definition: { stats: {} } },
     { id: 11, name: "X(S)", chassis: "x", definition: { stats: {} } },
@@ -5337,9 +5351,9 @@ test("파생형 연결은 명시 관계만 양방향으로 사용하고 다른 �
   assert.equal(local.mechlabRelatedVariants(10).length, 0);
 });
 
-test("사용자가 지정한 다섯 쌍은 양방향 스왑 시 실제 장비와 장갑을 보존한다", () => {
+test("사용자가 지정한 서른네 쌍은 양방향 스왑 시 실제 장비와 장갑을 보존한다", () => {
   const local = variantSwapTestApi();
-  for (const pair of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]]) {
+  for (const pair of [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737], [595, 912], [878, 879], [596, 944], [733, 732], [736, 904], [3627, 3697], [3698, 3628], [168, 920], [3711, 3659], [874, 365], [577, 889], [3716, 3664], [968, 108], [994, 715], [26, 916], [3718, 3671], [900, 52], [948, 276], [643, 669], [840, 839], [3661, 3713], [982, 544], [753, 776], [993, 610], [3662, 3714], [4, 873], [981, 139], [908, 246], [885, 337]]) {
     for (const [from, to] of [pair, [...pair].reverse()]) {
       for (const mode of ["stock", "strip"]) {
         local.state.initialFittingPreferences.mode = mode;

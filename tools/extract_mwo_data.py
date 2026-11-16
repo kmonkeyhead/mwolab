@@ -290,7 +290,7 @@ def is_lgd_special_mech(mech, definition):
         "VariantType",
     )
     return (
-        str(mech.get("name", "")).casefold().endswith("lgd")
+        str(mech.get("name", "")).casefold().endswith(("lgd", "(lgd)"))
         and str(variant_type).strip().casefold() == "special"
     )
 

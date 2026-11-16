@@ -290,6 +290,19 @@ class ExtractMwoDataTests(unittest.TestCase):
 
         self.assertEqual(display_name, "RFL-3N-SHLGD (LGD)")
 
+    def test_parenthesized_lgd_special_names_and_duplicate_suffix(self):
+        for key, label in [("chp-ap(lgd)", "APACHE"), ("PXH-S(LGD)", "SPECTRE")]:
+            for source_label in [label, label + " (LGD)"]:
+                with self.subTest(key=key, source_label=source_label):
+                    mech = {"name": key}
+                    self.assertEqual(EXTRACTOR.localized_mech_name(
+                        mech, {"stats": {"VariantType": "Special"}},
+                        {key.casefold(): source_label}, [], key,
+                    ), label + " (LGD)")
+            self.assertFalse(EXTRACTOR.is_lgd_special_mech(
+                {"name": key}, {"stats": {"VariantType": "Hero"}},
+            ))
+
     def test_lowercase_normal_mdf_variant_is_used_as_display_name(self):
         mech = {"name": "jm6-de", "chassis": "jagermech"}
         definition = {"stats": {"variant": "JM6-DE", "varianttype": ""}}

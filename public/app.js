@@ -29,7 +29,42 @@ let mechlabFittingTabSequence = 0;
 let mechlabVariantGroupCache = null;
 let mechlabVariantDialogTrigger = null;
 // Explicit relationships supplied by the user; names and suffixes are not keys.
-const MECHLAB_VARIANT_PAIRS = [[655, 656], [3667, 3717], [936, 657], [3894, 3840], [854, 737]];
+const MECHLAB_USER_VARIANT_PAIRS = [
+  [655, 656], // PIR-1(S) / PIR-1
+  [3667, 3717], // DECADION / PIR-D
+  [936, 657], // PIR-2(P) / PIR-2
+  [3894, 3840], // ZERO / ZERO (LGD)
+  [854, 737], // INC-5(C) / INC-5
+  [595, 912], // MLX-G / MLX-G(P)
+  [878, 879], // KFX-P / KFX-P(S)
+  [596, 944], // ACH-E / ACH-E(P)
+  [733, 732], // INC-1 / INC-1(S)
+  [736, 904], // INC-4 / INC-4(P)
+  [3627, 3697], // HASHKÉ (LGD) / HASHKÉ
+  [3698, 3628], // ABADDON / ABADDON (LGD)
+  [168, 920], // ADR-A / ADR-A(P)
+  [3711, 3659], // ADR-W / WARTHOG
+  [874, 365], // JR7-IIC-A(P) / JR7-IIC-A
+  [577, 889], // COU-H / COU-H(P)
+  [3716, 3664], // WLF-C / WLF-C(L)
+  [968, 108], // LCT-3S(P) / LCT-3S
+  [994, 715], // FLE-20(P) / FLE-20
+  [26, 916], // COM-1B / COM-1B(P)
+  [3718, 3671], // COM-D03 / COM-D03H
+  [900, 52], // SDR-5D(P) / SDR-5D
+  [948, 276], // UM-R60(P) / UM-R60
+  [643, 669], // UM-R68(L) / UM-R68
+  [840, 839], // UM-R80L / UM-R80
+  [3661, 3713], // UM-R(L) / UM-R
+  [982, 544], // JVN-10P(P) / JVN-10P
+  [753, 776], // JVN-11F(L) / JVN-11F
+  [993, 610], // OSR-4D(P) / OSR-4D
+  [3662, 3714], // JR7-A(L) / JR7-A
+  [4, 873], // JR7-F / JR7-F(P)
+  [981, 139], // FS9-A(P) / FS9-A
+  [908, 246], // PNT-9R(P) / PNT-9R
+  [885, 337], // WLF-1A(P) / WLF-1A
+];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
 let mechFilterTrigger = null;
@@ -4288,6 +4323,14 @@ function effectiveDefinition(mech = state.selectedMech, build = state.currentBui
   };
 }
 
+function mechlabVariantRelationSources(mechs = state.mechs) {
+  return {
+    table: mechs.filter((mech) => mech.definition?.stats?.VariantParent != null)
+      .map((mech) => [mech.id, mech.definition.stats.VariantParent]),
+    user: MECHLAB_USER_VARIANT_PAIRS.map((pair) => [...pair]),
+  };
+}
+
 function mechlabRelatedVariants(mechId) {
   if (mechlabVariantGroupCache?.mechs !== state.mechs) {
     const byId = new Map(state.mechs.map((mech) => [String(mech.id), mech]));
@@ -4303,8 +4346,9 @@ function mechlabRelatedVariants(mechId) {
         edges.get(key).add(String(target.id));
       }
     };
-    state.mechs.forEach((mech) => connect(mech.id, mech.definition?.stats?.VariantParent));
-    MECHLAB_VARIANT_PAIRS.forEach(([a, b]) => connect(a, b));
+    const sources = mechlabVariantRelationSources();
+    sources.table.forEach(([a, b]) => connect(a, b));
+    sources.user.forEach(([a, b]) => connect(a, b));
     const groups = new Map();
     for (const start of edges.keys()) {
       if (groups.has(start)) continue;
@@ -4322,7 +4366,7 @@ function mechlabRelatedVariants(mechId) {
       ));
       visited.forEach((id) => groups.set(id, group));
     }
-    mechlabVariantGroupCache = { mechs: state.mechs, groups };
+    mechlabVariantGroupCache = { mechs: state.mechs, sources, groups };
   }
   return (mechlabVariantGroupCache.groups.get(String(mechId)) || [])
     .filter((mech) => String(mech.id) !== String(mechId));
@@ -18631,6 +18675,7 @@ if (globalThis.__MWOLAB_TEST__) {
     setActiveMechlabTabBuild,
     mechlabFittingTabLabels,
     mechlabRelatedVariants,
+    mechlabVariantRelationSources,
     prepareMechlabVariantSwap,
     commitMechlabVariantSwap,
     renderMechlabFittingTabs,
