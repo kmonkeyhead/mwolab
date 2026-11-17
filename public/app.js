@@ -268,6 +268,7 @@ const TEXT = {
     "loadout.export": "EXPORT",
     "loadout.close": "로드아웃 코드 창 닫기",
     "loadout.apply": "불러오기",
+    "loadout.currentMechRequired": "스킬을 적용할 멕을 먼저 선택하세요.",
     "loadout.copy": "코드 복사",
     "loadout.copyUrl": "URL 복사",
     "loadout.codeLabel": "EXPORT 코드",
@@ -935,6 +936,7 @@ const TEXT = {
     "loadout.export": "EXPORT",
     "loadout.close": "Close loadout code dialog",
     "loadout.apply": "Import",
+    "loadout.currentMechRequired": "Select a mech before importing skills.",
     "loadout.copy": "Copy code",
     "loadout.copyUrl": "Copy URL",
     "loadout.codeLabel": "EXPORT CODE",
@@ -14368,10 +14370,13 @@ function loadNamedLocalBuild(recordId) {
   }
 }
 
-function validateImportCodes(code, skillCode = null) {
+function validateImportCodes(code, skillCode = null, { allowSkillOnly = false } = {}) {
   const errors = {};
   let mech, build, selectedSkills = null;
-  try {
+  const skillOnly = allowSkillOnly && !String(code ?? "").trim() && !!String(skillCode ?? "").trim();
+  if (skillOnly) {
+    if (!state.selectedMech || !state.currentBuild) errors.loadout = t("loadout.currentMechRequired");
+  } else try {
     if (!globalThis.MWOCodec) throw new Error(t("loadout.codecUnavailable"));
     const decoded = MWOCodec.decode(code);
     mech = mechById(decoded.chassisId);
@@ -14401,7 +14406,7 @@ function applyImportedSkills(selectedSkills) {
 }
 
 function importMwoCode(code, options = {}) {
-  return commitMwoImport(validateImportCodes(code, options.skillCode), options);
+  return commitMwoImport(validateImportCodes(code, options.skillCode, options), options);
 }
 
 function commitMwoImport({ mech, build, selectedSkills }, {
@@ -14409,6 +14414,13 @@ function commitMwoImport({ mech, build, selectedSkills }, {
   updateNavigation = true,
   historyTabId = null,
 } = {}) {
+  if (!mech) {
+    applyImportedSkills(selectedSkills);
+    if (closeDialog) closeLoadoutCodeDialog();
+    renderAll();
+    $("data-status").textContent = t("loadout.imported", { mech: state.selectedMech.display_name });
+    return;
+  }
   state.selectedItemId = null;
   if (state.activeMainTab !== "mechlab") setMainTab("mechlab");
   const historyTab = historyTabId
@@ -14875,7 +14887,7 @@ function applyImportedMwoCode() {
   setImportCodeErrors();
   setLoadoutCodeStatus();
   try {
-    importMwoCode($("loadout-code-text").value, { skillCode: $("skill-code-text").value });
+    importMwoCode($("loadout-code-text").value, { skillCode: $("skill-code-text").value, allowSkillOnly: true });
   } catch (error) {
     setImportCodeErrors(error.fields);
     setLoadoutCodeStatus(error.fields ? t("loadout.validationFailed") : error.message, "error");

@@ -5273,6 +5273,21 @@ test("코드 불러오기는 두 오류를 독립 검증하고 실패 시 피팅
     instance.applyImportedSkills(prepared.selectedSkills);
     assert.equal(instance.state.selectedSkillNodes, selection);
   }
+  const skillCode = require("../public/mwo-skill-codec.js").encode(new Set(["Range1"]));
+  const skillOnly = instance.validateImportCodes("  ", skillCode, { allowSkillOnly: true });
+  assert.equal(skillOnly.mech, undefined);
+  assert.equal(skillOnly.build, undefined);
+  assert.deepEqual([...skillOnly.selectedSkills], ["Range1"]);
+  assert.equal(instance.state.currentBuild, build);
+  assert.throws(() => instance.validateImportCodes("", "", { allowSkillOnly: true }));
+  assert.throws(() => instance.validateImportCodes("", skillCode)); // Shared URLs still require a loadout.
+  assert.throws(() => instance.validateImportCodes("", "bad-skill", { allowSkillOnly: true }), error => {
+    assert.deepEqual(Object.keys(error.fields), ["skill"]);
+    return true;
+  });
+  instance.state.selectedMech = null;
+  assert.throws(() => instance.validateImportCodes("", skillCode, { allowSkillOnly: true }), error => !!error.fields.loadout);
+  instance.state.selectedMech = mech;
   const empty = instance.validateImportCodes(code, "a" + "0".repeat(60));
   instance.state.skillEffectsCache.set("stale", []);
   instance.applyImportedSkills(empty.selectedSkills);
