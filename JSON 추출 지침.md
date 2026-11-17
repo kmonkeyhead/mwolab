@@ -58,6 +58,14 @@
 - `Slots` 같은 원본 추출 속성을 보존하며 의미가 다른 값으로 덮어쓰지 않고 `weapon_slots`를 추가한다.
 - 하드포인트 회귀 검사에서 `UM-SC`는 ballistic 2, energy 3, AMS 1이어야 한다. `UM-R60`은 ballistic 4, energy 2, `UM-R60L`은 ballistic 2, energy 4, `HBK-4G`는 ballistic 3이어야 하며 `FMT-AL` 왼팔 옴니포드는 energy 3이어야 한다.
 
+## 파생형 관계 갱신
+
+- JSON 추출·갱신에는 갱신된 원본 테이블에 사용자 지정 파생형 추가·정정 규칙을 적용하고 검증하는 작업을 포함한다. 관계 정책과 명시 ID 목록의 기준은 `프로젝트 규약 에이전트.md`의 멕랩 파생형 규칙이다.
+- `definition.stats.VariantParent`는 원본대로 추출한다. `public/app.js`의 `MECHLAB_USER_VARIANT_PAIRS`와 `MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS`는 재추출로 덮어쓰지 않는다. 최종 관계는 원본 테이블에서 명시 제외 연결을 제거하고 사용자 지정 연결을 합쳐 앱에서 구성하며, 이 결과를 원본 JSON에 덮어쓰지 않는다.
+- 사용자가 명시한 관계가 규약 또는 현재 요청에 있으나 앱 목록에 빠져 있으면 같은 갱신 작업에서 추가한다. 이름·접미사·스펙 유사성으로 새 관계를 추론하지 않는다. 지정 ID가 새 데이터에서 사라지거나 섀시가 달라지면 조용히 생략·재매핑하지 말고 해당 ID와 원본 변경을 보고한다.
+- 갱신 후 `node --test tests/mechlab-formulas.test.js tests/skill-tree.test.js tests/mwo-skill-codec.test.js`와 생성 데이터 검증 범위의 테스트를 실행한다. 사용자 지정 연결, 테이블 제외, SCALESHOT 두 기체와 PRIME 그룹의 분리, 장비·장갑 유지 스왑 회귀를 확인한다. 실패하면 갱신 완료로 보고하지 않는다.
+- 결과에 파생형 추가·정정 적용 여부, 누락·충돌 ID 및 관련 검증 결과를 포함한다.
+
 ## 변경 검증
 
 - 추출 변경 후 일반 멕 정의와 옴니포드 정의를 모두 검증하고, Python 및 JavaScript 문법 검사와 `git diff --check`를 실행하며 생성 파일 범위를 확인한 뒤 결과를 유지한다.

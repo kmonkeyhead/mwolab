@@ -64,6 +64,48 @@ const MECHLAB_USER_VARIANT_PAIRS = [
   [981, 139], // FS9-A(P) / FS9-A
   [908, 246], // PNT-9R(P) / PNT-9R
   [885, 337], // WLF-1A(P) / WLF-1A
+  [957, 424], // VPR-B(P) / VPR-B
+  [3622, 3683], // SCALESHOT (LGD) / SCALESHOT
+  [842, 841], // VPR-FL / VPR-F
+  [3763, 422], // VPR-PRIME(I) / VPR-PRIME
+  [421, 422], // VPR-PRIME(S) / VPR-PRIME
+  [890, 624], // ACW-A(P) / ACW-A
+  [3660, 3712], // IFR-J(L) / IFR-J
+  [3790, 3712], // IFR-J(S) / IFR-J
+  [937, 597], // IFR-P(P) / IFR-P
+  [921, 298], // SHC-B(P) / SHC-B
+  [853, 852], // SHC-D(S) / SHC-D
+  [974, 267], // NVA-A(P) / NVA-A
+  [875, 369], // HBK-IIC-B(P) / HBK-IIC-B
+  [960, 461], // HMN-P(P) / HMN-P
+  [913, 308], // SCR-B(P) / SCR-B
+  [945, 666], // BKL-D(P) / BKL-D
+  [746, 747], // VGL-1(S) / vgl-prime
+  [905, 749], // VGL-3(P) / VGL-3
+  [3655, 3699], // GOREWING (LGD) / GOREWING
+  [901, 36], // CDA-3M(P) / CDA-3M
+  [941, 524], // ASSASIN ASN-27(P) / ASN-27
+  [725, 726], // VL-2T(S) / vl-2t
+  [933, 80], // BJ-3(P) / BJ-3
+  [983, 729], // VT-5S(P) / VL-5S (user-confirmed IDs)
+  [995, 208], // VND-1X(P) / VND-1X
+  [952, 414], // PXH-1B(P) / PXH-1B
+  [836, 835], // PXH-7S(S) / PXH-7S
+  [942, 653], // HSN-8P(P) / HSN-8P
+  [992, 966], // HCT-7R(P) / HCT-7R
+  [917, 29], // CN9-D(P) / CN9-D
+  [940, 63], // TBT-7K(P) / TBT-7K
+  [949, 313], // ENF-4P(P) / ENF-4P
+  [886, 333], // CRB-27SL(P) / CRB-27SL
+  [882, 563], // UZL-6P(P) / UZL-6P
+  [985, 96], // KTO-19(P) / KTO-19
+  [969, 154], // SHD-2K(P) / SHD-2K
+  [3607, 3657], // SHD-SLGD / SCATTERSHOT
+  [973, 300], // GRF-2N(P) / GRF-2N
+  [972, 132], // WVR-7K(P) / WVR-7K
+  [909, 502], // BSW-X2(P) / BSW-X2
+  [984, 812], // DV-6MR(P) / DV-6MR
+  [808, 809], // DV-6M(S) / dv-6m
 ];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
@@ -4325,6 +4367,9 @@ function effectiveDefinition(mech = state.selectedMech, build = state.currentBui
   };
 }
 
+// Explicit user corrections; preserve the extracted parent data unchanged.
+const MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS = [[3622, 422], [3683, 422]];
+
 function mechlabVariantRelationSources(mechs = state.mechs) {
   return {
     table: mechs.filter((mech) => mech.definition?.stats?.VariantParent != null)
@@ -4349,7 +4394,10 @@ function mechlabRelatedVariants(mechId) {
       }
     };
     const sources = mechlabVariantRelationSources();
-    sources.table.forEach(([a, b]) => connect(a, b));
+    sources.table.forEach(([a, b]) => {
+      if (MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS.some(([x, y]) => (String(a) === String(x) && String(b) === String(y)) || (String(a) === String(y) && String(b) === String(x)))) return;
+      connect(a, b);
+    });
     sources.user.forEach(([a, b]) => connect(a, b));
     const groups = new Map();
     for (const start of edges.keys()) {
