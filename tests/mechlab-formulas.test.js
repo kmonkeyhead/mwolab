@@ -1355,6 +1355,47 @@ test("공유 핏팅 좋아요 상태와 로그인 가능 여부는 같은 문서
   }
 });
 
+test("피팅 탭은 스킬을 독립 보존하고 새 탭은 미적용으로 시작한다", () => {
+  const local = loadMechLab();
+  const alpha = { id: 101, chassis: "alpha" };
+  const beta = { id: 202, chassis: "beta" };
+  local.state.mechs = [alpha, beta];
+  const first = local.addMechlabTabRecord(alpha, { mechId: alpha.id });
+  local.state.selectedSkillNodes = new Set(["Cooldown1"]);
+  local.state.skillSelectionMode = "mechlab";
+  const second = local.addMechlabTabRecord(alpha, { mechId: alpha.id });
+  assert.equal(local.state.selectedSkillNodes.size, 0);
+  assert.equal(local.state.skillSelectionMode, "none");
+  local.applyImportedSkills(new Set(["Range1"]));
+  local.activateMechlabTabRecord(first.id);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Cooldown1"]);
+  assert.equal(local.state.skillSelectionMode, "mechlab");
+  // Both code IMPORT and fitting-browser application replace through this path.
+  local.replaceActiveMechlabTabRecord(beta, { mechId: beta.id });
+  local.applyImportedSkills(null);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Cooldown1"]);
+  assert.equal(local.state.skillSelectionMode, "mechlab");
+  local.activateMechlabTabRecord(second.id);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Range1"]);
+  assert.equal(local.state.skillSelectionMode, "custom");
+  local.applyImportedSkills(new Set());
+  local.closeMechlabTabRecord(second.id);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Cooldown1"]);
+});
+
+test("비활성 동일 멕 탭의 파생형 스왑은 대상 탭 스킬을 보존한다", () => {
+  const local = variantSwapTestApi();
+  const mech = local.state.mechs.find((entry) => entry.id === 655);
+  const first = local.addMechlabTabRecord(mech, local.buildForMechSelection(mech));
+  local.applyImportedSkills(new Set(["Cooldown1"]));
+  const second = local.addMechlabTabRecord(mech, local.buildForMechSelection(mech));
+  local.applyImportedSkills(new Set(["Range1"]));
+  assert.equal(local.commitMechlabVariantSwap(local.prepareMechlabVariantSwap(first.id, 656)), true);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Cooldown1"]);
+  local.activateMechlabTabRecord(second.id);
+  assert.deepEqual([...local.state.selectedSkillNodes], ["Range1"]);
+});
+
 test("멕랩 핏팅 탭은 중복 멕의 독립 빌드를 생성하고 활성 탭만 교체한다", () => {
   const previous = {
     mechs: api.state.mechs,

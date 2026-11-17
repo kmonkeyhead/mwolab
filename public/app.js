@@ -4488,9 +4488,7 @@ function prepareMechlabVariantSwap(tabId, targetId) {
 
 function commitMechlabVariantSwap(prepared) {
   if (prepared.error || !prepared.tab || !prepared.mech || !prepared.build) return false;
-  rememberActiveMechlabTabBuild();
-  state.activeMechlabTabId = prepared.tab.id;
-  clearEmptyMechlabTabSlotFocus();
+  activateMechlabTabRecord(prepared.tab.id);
   replaceActiveMechlabTabRecord(prepared.mech, prepared.build);
   return true;
 }
@@ -4544,6 +4542,8 @@ function rememberActiveMechlabTabBuild() {
   const tab = activeMechlabTab();
   if (!tab || !state.currentBuild || String(tab.mechId) !== String(state.selectedMech?.id || "")) return;
   tab.build = state.currentBuild;
+  tab.selectedSkillNodes = new Set(state.selectedSkillNodes);
+  tab.skillSelectionMode = state.skillSelectionMode;
 }
 
 function applyActiveMechlabTabSelection() {
@@ -4551,6 +4551,8 @@ function applyActiveMechlabTabSelection() {
   const mech = tab ? mechById(tab.mechId) : null;
   state.selectedMech = mech;
   state.currentBuild = mech && tab?.build ? tab.build : null;
+  state.selectedSkillNodes = new Set(tab?.selectedSkillNodes || []);
+  state.skillSelectionMode = tab?.skillSelectionMode || "none";
   state.selectedMechIdsByTab.mechlab = mech?.id ?? null;
   state.selectedChassis = mech?.chassis || "";
   return tab && mech ? tab : null;
@@ -4558,10 +4560,13 @@ function applyActiveMechlabTabSelection() {
 
 function addMechlabTabRecord(mech, build) {
   if (!mech || !build || state.mechlabTabs.length >= MAX_MECHLAB_FITTING_TABS) return null;
+  rememberActiveMechlabTabBuild();
   const tab = {
     id: `fitting-${++mechlabFittingTabSequence}`,
     mechId: mech.id,
     build,
+    selectedSkillNodes: new Set(),
+    skillSelectionMode: "none",
   };
   state.mechlabTabs.push(tab);
   state.activeMechlabTabId = tab.id;
@@ -4574,6 +4579,7 @@ function replaceActiveMechlabTabRecord(mech, build) {
   if (!mech || !build) return null;
   const tab = activeMechlabTab();
   if (!tab) return addMechlabTabRecord(mech, build);
+  rememberActiveMechlabTabBuild();
   tab.mechId = mech.id;
   tab.build = build;
   delete tab.communitySource;
