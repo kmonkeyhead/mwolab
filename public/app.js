@@ -8446,13 +8446,13 @@ function mechSummaryAmmoGroups(weapons) {
         (sum, weapon) => sum + weaponAmmoPerTrigger(weapon.item),
         0,
       );
-      const volleys = roundsPerVolley > 0 ? Math.floor(group.rounds / roundsPerVolley) : 0;
+      const availableVolleys = roundsPerVolley > 0 ? group.rounds / roundsPerVolley : 0;
       const volleyDamage = group.weapons.reduce((sum, weapon) => sum + number(weapon.damage), 0);
       return {
         ...group,
         label: ammoGroupWeaponLabel(group.weapons),
-        volleys,
-        totalDamage: volleys * volleyDamage,
+        volleys: Math.ceil(availableVolleys),
+        totalDamage: availableVolleys * volleyDamage,
       };
     })
     .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));

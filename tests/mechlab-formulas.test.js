@@ -5095,8 +5095,8 @@ test("고정 9032는 AMAROK 무기·탄약·시뮬레이션에 공용 Modifier�
   closeTo(simulationWeapons[0].cycle, 1);
   const ammoGroups = api.mechSummaryAmmoGroups(simulationWeapons);
   assert.equal(ammoGroups.length, 1);
-  assert.equal(ammoGroups[0].volleys, 12);
-  closeTo(ammoGroups[0].totalDamage, 96);
+  assert.equal(ammoGroups[0].volleys, 13);
+  closeTo(ammoGroups[0].totalDamage, 100);
 });
 
 
