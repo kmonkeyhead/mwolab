@@ -106,6 +106,30 @@ const MECHLAB_USER_VARIANT_PAIRS = [
   [909, 502], // BSW-X2(P) / BSW-X2
   [984, 812], // DV-6MR(P) / DV-6MR
   [808, 809], // DV-6M(S) / dv-6m
+  [931, 265], // MDD-C(P) / MDD-C
+  [906, 721], // HLF-A(P) / HLF-A
+  [938, 281], // EBJ-A(P) / EBJ-A
+  [3701, 282], // EBJ-B(S) / EBJ-B
+  [958, 474], // LBK-D(P) / LBK-D
+  [862, 673], // LBK-H(C) / LBK-H
+  [647, 673], // LBK-H(L) / LBK-H
+  [930, 799], // RFL-IIC-2(P) / RFL-IIC-2
+  [798, 797], // rfl-iic / RFL-IIC(S)
+  [975, 188], // SMN-B(P) / SMN-B
+  [3774, 188], // SMN-B(CS) / SMN-B
+  [881, 880], // SMN-G(S) / SMN-G
+  [3798, 3844], // SMN-P(TSP) / SMN-P
+  [891, 632], // NCT-B(P) / NCT-B
+  [961, 679], // SNS-D(P) / SNS-D
+  [3611, 3675], // HOWL (LGD) / HOWL
+  [3826, 3874], // TBR-N(L) / TBR-N
+  [3623, 165], // TBR-S(CS) / TBR-S
+  [922, 165], // TBR-S(P) / TBR-S
+  [876, 373], // ON1-IIC-A(P) / ON1-IIC-A
+  [454, 373], // ON1-IIC-A(C) / ON1-IIC-A
+  [978, 375], // ON1-IIC-C(S) / ON1-IIC-C
+  [946, 445], // NTG-C(P) / ntg-c
+  [756, 779], // NTG-H(L) / NTG-H
 ];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
@@ -4368,7 +4392,7 @@ function effectiveDefinition(mech = state.selectedMech, build = state.currentBui
 }
 
 // Explicit user corrections; preserve the extracted parent data unchanged.
-const MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS = [[3622, 422], [3683, 422]];
+const MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS = [[3622, 422], [3683, 422], [3623, 164]];
 
 function mechlabVariantRelationSources(mechs = state.mechs) {
   return {
