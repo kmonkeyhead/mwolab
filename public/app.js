@@ -8623,6 +8623,22 @@ function renderMechBrowserHardpoints(mech, build) {
   `;
 }
 
+let mechBrowserPreviewHtml = null;
+
+// Replacing identical markup would drop any text the user has selected in the panel.
+function setMechBrowserPreviewContent(content, html) {
+  if (mechBrowserPreviewHtml === html) return;
+  mechBrowserPreviewHtml = html;
+  content.innerHTML = html;
+}
+
+function mechBrowserPreviewHasSelection() {
+  const content = $("mech-browser-preview-content");
+  const selection = globalThis.getSelection?.();
+  if (!content || !selection || selection.isCollapsed || !selection.rangeCount) return false;
+  return content.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
 function renderMechBrowserPreview() {
   const panel = $("mech-browser-preview");
   const content = $("mech-browser-preview-content");
@@ -8639,14 +8655,14 @@ function renderMechBrowserPreview() {
     || mechById(state.mechlabBrowseSelectionId)
     || state.selectedMech;
   if (!mech) {
-    content.innerHTML = `<div class="empty mech-browser-preview-empty">${t("info.selectMechHint")}</div>`;
+    setMechBrowserPreviewContent(content, `<div class="empty mech-browser-preview-empty">${t("info.selectMechHint")}</div>`);
     return;
   }
 
   const data = infoDataForMech(mech, true);
   const movement = data.movement;
   const stats = data.stats || {};
-  content.innerHTML = `
+  setMechBrowserPreviewContent(content, `
     <header class="mech-browser-preview-header">
       <div>
         <span>${factionLabel(mech.faction)} · ${WEIGHT_CLASS_LABELS[mech.weight_class] || mech.weight_class || t("common.unknown")} · ${stats.MaxTons || "?"}t</span>
@@ -8681,12 +8697,14 @@ function renderMechBrowserPreview() {
     <div class="mech-browser-preview-quirks">
       ${renderMechSummaryQuirks(data.quirks, mech, data.build)}
     </div>
-  `;
+  `);
 }
 
 function setMechBrowserPreviewHover(mechId = null) {
   const nextId = mechById(mechId) ? String(mechId) : null;
   if (state.mechBrowserHoverMechId === nextId) return;
+  // Keep the panel stable while the user is selecting or copying its text.
+  if (mechBrowserPreviewHasSelection()) return;
   state.mechBrowserHoverMechId = nextId;
   renderMechBrowserPreview();
 }
