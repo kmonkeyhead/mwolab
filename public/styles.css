@@ -1107,6 +1107,18 @@ body.privacy-page {
   letter-spacing: 0.025em;
 }
 
+/* Copying the name must not depend on where a drag ends: the icon and flex gap
+   collapsed the selection, and hyphenated names split on double-click. */
+.mech-browser-preview-header h2 .omnipod-icon {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.mech-browser-preview-name {
+  -webkit-user-select: all;
+  user-select: all;
+}
+
 .mech-browser-preview-header > div > span {
   color: #7196a4;
   font-size: 0.75rem;

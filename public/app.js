@@ -8666,7 +8666,7 @@ function renderMechBrowserPreview() {
     <header class="mech-browser-preview-header">
       <div>
         <span>${factionLabel(mech.faction)} · ${WEIGHT_CLASS_LABELS[mech.weight_class] || mech.weight_class || t("common.unknown")} · ${stats.MaxTons || "?"}t</span>
-        <h2>${omnipodIcon(mech)}${escapeHtml(mech.display_name || variantCode(mech))}</h2>
+        <h2>${omnipodIcon(mech)}<span class="mech-browser-preview-name">${escapeHtml(mech.display_name || variantCode(mech))}</span></h2>
       </div>
     </header>
     <section class="mech-browser-preview-section mech-browser-hardpoint-section">
@@ -17915,6 +17915,18 @@ function bindEvents() {
   $("mech-browser-preview").addEventListener("click", (event) => {
     const button = event.target.closest("[data-fit-browser-mech]");
     if (button) openMechFitting(button.dataset.fitBrowserMech);
+  });
+  // A drag that ends on the omnipod icon starts the range before the heading line, which adds a leading newline.
+  $("mech-browser-preview").addEventListener("copy", (event) => {
+    const selection = globalThis.getSelection?.();
+    if (!selection?.rangeCount || !event.clipboardData) return;
+    const container = selection.getRangeAt(0).commonAncestorContainer;
+    const element = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+    if (!element?.closest(".mech-browser-preview-header")) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    event.clipboardData.setData("text/plain", text);
+    event.preventDefault();
   });
   $("add-mechlab-fitting-tab").addEventListener("click", () => showFullMechlabList("add"));
   $("mechlab-fitting-tabs").addEventListener("click", (event) => {
