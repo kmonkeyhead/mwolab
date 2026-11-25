@@ -43,7 +43,7 @@
 
       <section class="privacy-section">
         <h2>4. 외부 서비스</h2>
-        <p>MwoLab은 정적 페이지 호스팅에 GitHub Pages를 사용하고, 로그인과 공개 핏팅에 Google Firebase Authentication 및 Cloud Firestore를 사용하며, 방문 통계에 Cloudflare Web Analytics를 사용합니다. 각 서비스의 처리는 해당 사업자의 방침을 따릅니다.</p>
+        <p>MwoLab은 정적 페이지 호스팅에 GitHub Pages를 사용하고, 로그인과 공개 핏팅에 Google Firebase Authentication 및 Cloud Firestore를 사용하며, 방문 통계에 Cloudflare Web Analytics를 사용합니다. 로그인 및 갱신 시 Cloudflare Worker는 Google 액세스 토큰 또는 Firebase 갱신 토큰을 Firebase에 전달합니다. 각 서비스의 처리는 해당 사업자의 방침을 따릅니다.</p>
         <ul>
           <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google 개인정보처리방침</a></li>
           <li><a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener noreferrer">Firebase 개인정보 및 보안 안내</a></li>
@@ -87,7 +87,7 @@
 
         <section class="privacy-section">
           <h2>Purposes, services, and retention</h2>
-          <p>Information is used for authentication, unique optional nicknames, public fitting publication and viewing, private ownership checks, one like per account, abuse prevention, troubleshooting, and aggregate usage measurement. Authentication data is not used to reveal the publisher's real identity. MwoLab uses GitHub Pages, Google Firebase Authentication and Cloud Firestore, and Cloudflare Web Analytics. Local data remains until cleared from the browser; Firebase-related data is retained while needed to operate the service. When an owner deletes a public fitting, the public document is removed immediately and a private cleanup request is created; an administrative maintenance pass then removes the fitting's like records and the request. Contact the address above to request account deletion. Ownership may need to be verified before deletion.</p>
+          <p>Information is used for authentication, unique optional nicknames, public fitting publication and viewing, private ownership checks, one like per account, abuse prevention, troubleshooting, and aggregate usage measurement. Authentication data is not used to reveal the publisher's real identity. MwoLab uses GitHub Pages, Google Firebase Authentication and Cloud Firestore, and Cloudflare Web Analytics. A Cloudflare Worker forwards the Google access token or Firebase refresh token to Firebase for sign-in and session renewal. Local data remains until cleared from the browser; Firebase-related data is retained while needed to operate the service. When an owner deletes a public fitting, the public document is removed immediately and a private cleanup request is created; an administrative maintenance pass then removes the fitting's like records and the request. Contact the address above to request account deletion. Ownership may need to be verified before deletion.</p>
           <p>Google sign-in is required to set a nickname, publish or delete fittings, or manage likes. Nickname setup is optional and can be skipped. Public fittings can be viewed and applied without signing in. The UI displays the selected nickname or Pilot as the author, but never the publisher's Google name, email address, or profile photo. MwoLab does not sell personal information or provide personalized advertising. This policy and its effective date will be updated if these practices materially change.</p>
         </section>
       </div>

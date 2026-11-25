@@ -49,7 +49,7 @@ function route({
 
 function mobileSharedFittingHarness({ href, fetchDocument }) {
   const source = read("public/mobile/mobile-shared-fitting.js")
-    .replace(/^import[^\n]+\n/, 'const firebaseConfig = { projectId: "mwolab-2e145", apiKey: "test-key" };\n');
+    .replace(/^import[^\n]+\n/, 'const firebaseConfig = { projectId: "mwolab-2e145" };\n');
   const listeners = new Map();
   const events = [];
   const openedCodes = [];
@@ -400,6 +400,7 @@ test("모바일 번들은 별도 진입점과 제한된 멕랩 UI 계약을 포�
   assert.match(mobileSharedFitting, /import \{ firebaseConfig \} from "\.\.\/firebase-public-config\.js"/);
   assert.match(mobileSharedFitting, /firestore\.googleapis\.com\/v1\/projects/);
   assert.match(mobileSharedFitting, /documents\/fittings\/\$\{encodeURIComponent\(fittingId\)\}/);
+  assert.doesNotMatch(mobileSharedFitting, /apiKey|searchParams\.set\("key"/);
   assert.match(mobileSharedFitting, /response\.status === 404/);
   assert.match(mobileSharedFitting, /\[1, 2, 3\]\.includes\(schemaVersion\)/);
   assert.match(mobileSharedFitting, /currentFittingId !== fittingId/);

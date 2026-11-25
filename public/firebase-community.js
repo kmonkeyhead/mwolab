@@ -1,4 +1,6 @@
 import { FIREBASE_VERSION, firebaseConfig } from "./firebase-public-config.js";
+import { createCommunitySession } from "./community-session.js";
+import { createMemberFirestore, serverTimestamp } from "./community-firestore.js";
 
 const PAGE_SIZE = 25;
 const FETCH_LIMIT = 100;
@@ -110,6 +112,7 @@ const elements = {
 };
 
 let auth = null;
+let memberDb = null;
 let db = null;
 let currentUser = null;
 let firebaseApi = null;
@@ -349,7 +352,7 @@ async function checkNicknameAvailability(value) {
   if (parts.nicknameKey === currentProfile?.nicknameKey) return setNicknameStatus(copy.nicknameUnchanged, "error");
   setNicknameStatus(copy.nicknameChecking);
   try {
-    const snapshot = await firebaseApi.getDoc(firebaseApi.doc(db, "nicknames", parts.nicknameKey));
+    const snapshot = await memberDb.getDoc(firebaseApi.doc(db, "nicknames", parts.nicknameKey));
     if (generation !== nicknameCheckGeneration) return;
     if (snapshot.exists()) return setNicknameStatus(copy.nicknameTaken, "error");
     nicknameAvailableKey = parts.nicknameKey;
@@ -365,10 +368,10 @@ async function skipNicknamePrompt() {
   const user = currentUser;
   try {
     const userRef = firebaseApi.doc(db, "users", user.uid);
-    const profile = await firebaseApi.runTransaction(db, async (transaction) => {
+    const profile = await memberDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(userRef);
       if (snapshot.exists()) return snapshot.data();
-      const data = { nicknamePrompted: true, createdAt: firebaseApi.serverTimestamp(), updatedAt: firebaseApi.serverTimestamp() };
+      const data = { nicknamePrompted: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
       transaction.set(userRef, data);
       return data;
     });
@@ -401,7 +404,7 @@ async function registerNickname(value) {
   try {
     const userRef = firebaseApi.doc(db, "users", user.uid);
     const nicknameRef = firebaseApi.doc(db, "nicknames", parts.nicknameKey);
-    await firebaseApi.runTransaction(db, async (transaction) => {
+    await memberDb.runTransaction(async (transaction) => {
       const userSnapshot = await transaction.get(userRef);
       const nicknameSnapshot = await transaction.get(nicknameRef);
       const previousNicknameKey = userSnapshot.exists() ? String(userSnapshot.data().nicknameKey || "") : "";
@@ -425,13 +428,13 @@ async function registerNickname(value) {
         throw error;
       }
       const profile = {
-        ...(userSnapshot.exists() ? { createdAt: userSnapshot.data().createdAt } : { createdAt: firebaseApi.serverTimestamp() }),
+        ...(userSnapshot.exists() ? { createdAt: userSnapshot.data().createdAt } : { createdAt: serverTimestamp() }),
         nickname: parts.nickname,
         nicknameKey: parts.nicknameKey,
         nicknamePrompted: true,
-        updatedAt: firebaseApi.serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
-      transaction.set(nicknameRef, { ownerUid: user.uid, createdAt: firebaseApi.serverTimestamp() });
+      transaction.set(nicknameRef, { ownerUid: user.uid, createdAt: serverTimestamp() });
       if (previousNicknameRef) transaction.delete(previousNicknameRef);
       transaction.set(userRef, profile);
     });
@@ -526,10 +529,9 @@ async function handleGoogleAccessToken(response) {
     return;
   }
   try {
-    const credential = firebaseApi.GoogleAuthProvider.credential(null, response.access_token);
-    const result = await firebaseApi.signInWithCredential(auth, credential);
+    const user = await auth.signIn(response.access_token);
     setAuthStatus();
-    finishPendingSignIn(result.user);
+    finishPendingSignIn(user);
   } catch (error) {
     setAuthStatus(firebaseErrorMessage(error, copy.loginFailed));
     finishPendingSignIn();
@@ -1322,7 +1324,7 @@ async function savePublicFitting(name) {
   const fitting = bridge.getCurrentFitting();
   const fittingRef = firebaseApi.doc(firebaseApi.collection(db, "fittings"));
   const usageRef = firebaseApi.doc(db, "publisherUsage", user.uid);
-  await firebaseApi.runTransaction(db, async (transaction) => {
+  await memberDb.runTransaction(async (transaction) => {
     const usageSnapshot = await transaction.get(usageRef);
     const count = usageSnapshot.exists() ? usageSnapshot.data().count : 0;
     if (!Number.isInteger(count) || count < 0) throw new Error("Invalid publisher usage");
@@ -1332,8 +1334,8 @@ async function savePublicFitting(name) {
       throw error;
     }
     const nextCount = count + 1;
-    transaction.set(fittingRef, { ownerUid: user.uid, mechId: fitting.mechId, chassisKey: fitting.chassisKey, name, loadoutCode: fitting.loadoutCode, likeCount: 0, createdAt: firebaseApi.serverTimestamp(), schemaVersion: 3 });
-    transaction.set(usageRef, { count: nextCount, lastFittingId: fittingRef.id, operation: "create", updatedAt: firebaseApi.serverTimestamp() });
+    transaction.set(fittingRef, { ownerUid: user.uid, mechId: fitting.mechId, chassisKey: fitting.chassisKey, name, loadoutCode: fitting.loadoutCode, likeCount: 0, createdAt: serverTimestamp(), schemaVersion: 3 });
+    transaction.set(usageRef, { count: nextCount, lastFittingId: fittingRef.id, operation: "create", updatedAt: serverTimestamp() });
   });
   invalidateRecommendations(fitting.mechId);
 }
@@ -1388,7 +1390,8 @@ async function ensureLikeState(id) {
   if (pendingLikeStateRequests.has(key)) return;
   pendingLikeStateRequests.add(key);
   try {
-    const snapshot = await firebaseApi.getDoc(firebaseApi.doc(db, "fittings", id, "likes", currentUser.uid));
+    const snapshot = await memberDb.getDoc(firebaseApi.doc(db, "fittings", id, "likes", currentUser.uid));
+    if (key !== `${currentUser?.uid}:${id}`) return;
     const liked = snapshot.exists();
     if (liked) likedFittingKeys.add(key);
     const currentRecord = records.find((entry) => entry.id === id);
@@ -1407,7 +1410,7 @@ async function syncSourceLikeState(source) {
   const user = currentUser;
   if (!user || !source || !firebaseApi || !db) return;
   try {
-    const snapshot = await firebaseApi.getDoc(firebaseApi.doc(db, "fittings", source.id, "likes", user.uid));
+    const snapshot = await memberDb.getDoc(firebaseApi.doc(db, "fittings", source.id, "likes", user.uid));
     if (currentUser?.uid !== user.uid) return;
     const key = `${user.uid}:${source.id}`;
     const liked = snapshot.exists();
@@ -1431,8 +1434,9 @@ async function toggleLike(id) {
   if (!currentUser || !firebaseApi || !db) return;
   try {
     const fittingRef = firebaseApi.doc(db, "fittings", id);
-    const likeRef = firebaseApi.doc(db, "fittings", id, "likes", currentUser.uid);
-    const result = await firebaseApi.runTransaction(db, async (transaction) => {
+    const user = currentUser;
+    const likeRef = firebaseApi.doc(db, "fittings", id, "likes", user.uid);
+    const result = await memberDb.runTransaction(async (transaction) => {
       const fittingSnapshot = await transaction.get(fittingRef);
       const likeSnapshot = await transaction.get(likeRef);
       if (!fittingSnapshot.exists()) throw new Error("Missing fitting");
@@ -1445,11 +1449,12 @@ async function toggleLike(id) {
         transaction.update(fittingRef, { likeCount: next });
         return { count: next, liked: false, mechId: String(fittingData.mechId || "") };
       }
-      transaction.set(likeRef, { createdAt: firebaseApi.serverTimestamp() });
+      transaction.set(likeRef, { createdAt: serverTimestamp() });
       transaction.update(fittingRef, { likeCount: count + 1 });
       return { count: count + 1, liked: true, mechId: String(fittingData.mechId || "") };
     });
-    const key = `${currentUser.uid}:${id}`;
+    if (currentUser?.uid !== user.uid) return;
+    const key = `${user.uid}:${id}`;
     if (result.liked) likedFittingKeys.add(key);
     else likedFittingKeys.delete(key);
     updateLikeViews(id, result.count, result.liked, result.mechId);
@@ -1468,7 +1473,7 @@ async function deleteRemoteFitting(record) {
   const fittingRef = firebaseApi.doc(db, "fittings", record.id);
   const deletionRequestRef = firebaseApi.doc(db, "deletionRequests", record.id);
   const usageRef = firebaseApi.doc(db, "publisherUsage", user.uid);
-  await firebaseApi.runTransaction(db, async (transaction) => {
+  await memberDb.runTransaction(async (transaction) => {
     const fittingSnapshot = await transaction.get(fittingRef);
     const usageSnapshot = await transaction.get(usageRef);
     if (!fittingSnapshot.exists()) throw new Error("Missing fitting");
@@ -1481,10 +1486,10 @@ async function deleteRemoteFitting(record) {
     transaction.set(deletionRequestRef, {
       ownerUid: user.uid,
       mechId: fitting.mechId,
-      createdAt: firebaseApi.serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
     transaction.delete(fittingRef);
-    transaction.set(usageRef, { count: nextCount, lastFittingId: record.id, operation: "delete", updatedAt: firebaseApi.serverTimestamp() });
+    transaction.set(usageRef, { count: nextCount, lastFittingId: record.id, operation: "delete", updatedAt: serverTimestamp() });
   });
 }
 async function deleteFitting(id) {
@@ -1653,7 +1658,7 @@ elements.login.addEventListener("click", async (event) => {
   elements.login.setAttribute("aria-expanded", String(opening));
 });
 elements.setNickname.addEventListener("click", () => openNicknameDialog("account"));
-elements.logout.addEventListener("click", () => firebaseApi?.signOut(auth));
+elements.logout.addEventListener("click", () => auth?.signOut());
 elements.nicknameInput.addEventListener("input", () => {
   clearTimeout(nicknameCheckTimer);
   nicknameCheckGeneration += 1;
@@ -1790,18 +1795,21 @@ async function initializeFirebase() {
   updateLoginButton();
   if (!bridge || location.protocol === "file:") return false;
   try {
-    const [appModule, authModule, firestoreModule] = await Promise.all([
+    const [appModule, firestoreModule] = await Promise.all([
       import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
-      import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`),
       import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`),
     ]);
-    firebaseApi = { ...appModule, ...authModule, ...firestoreModule };
+    firebaseApi = { ...appModule, ...firestoreModule };
     const app = appModule.initializeApp(firebaseConfig);
-    auth = authModule.getAuth(app);
+    auth = createCommunitySession();
+    memberDb = createMemberFirestore(firebaseConfig.projectId, auth);
     db = firestoreModule.getFirestore(app);
-    const googleAccounts = await loadGoogleIdentity();
-    googleTokenClient = googleAccounts.oauth2.initTokenClient({ client_id: GOOGLE_IDENTITY_CLIENT_ID, scope: "openid email profile", callback: handleGoogleAccessToken, error_callback: handleGooglePopupError });
-    authModule.onAuthStateChanged(auth, (user) => {
+    auth.onChange((user) => {
+      if (currentUser?.uid !== user?.uid) {
+        likedFittingKeys.clear();
+        pendingLikeStateRequests.clear();
+        records.forEach(record => { record.liked = false; });
+      }
       currentUser = user;
       currentProfile = null;
       profileLoadGeneration += 1;
@@ -1828,8 +1836,10 @@ async function initializeFirebase() {
       if (user) setAuthStatus();
       if (!elements.overlay.hidden && activeMode === "browse" && activeBrowserTab === "mine") switchBrowserTab("mine", true);
     });
-    await auth.authStateReady();
-    currentUser = auth.currentUser;
+    loadGoogleIdentity().then(googleAccounts => {
+      googleTokenClient = googleAccounts.oauth2.initTokenClient({ client_id: GOOGLE_IDENTITY_CLIENT_ID, scope: "openid email profile", callback: handleGoogleAccessToken, error_callback: handleGooglePopupError });
+      updateLoginButton();
+    }).catch(() => setAuthStatus(copy.unavailable));
     updateLoginButton();
     return true;
   } catch (error) {

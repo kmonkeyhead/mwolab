@@ -1,7 +1,6 @@
 export const FIREBASE_VERSION = "12.17.1";
 
 export const firebaseConfig = Object.freeze({
-  apiKey: "AIzaSyAVs8fDgmsjhfh1KdHMRu_liF20dlcfGns",
   authDomain: "mwolab-2e145.firebaseapp.com",
   projectId: "mwolab-2e145",
   storageBucket: "mwolab-2e145.firebasestorage.app",

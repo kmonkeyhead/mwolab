@@ -50,7 +50,6 @@ async function fetchSharedFittingCode(fittingId) {
   const endpoint = new URL(
     `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/fittings/${encodeURIComponent(fittingId)}`,
   );
-  endpoint.searchParams.set("key", firebaseConfig.apiKey);
   const response = await fetch(endpoint);
   if (response.status === 404) throw new Error("missing");
   if (!response.ok) throw new Error("failed");

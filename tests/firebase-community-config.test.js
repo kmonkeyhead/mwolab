@@ -27,6 +27,7 @@ test("Firebase 공개 설정에는 서버 비밀키를 포함하지 않는다", 
   const config = read("public/firebase-public-config.js");
   assert.match(client, /import \{ FIREBASE_VERSION, firebaseConfig \} from "\.\/firebase-public-config\.js"/);
   assert.match(config, /projectId:\s*"mwolab-2e145"/);
+  assert.doesNotMatch(config, /apiKey|AIza[\w-]{35}/);
   assert.match(config, /export const firebaseConfig = Object\.freeze/);
   assert.match(client, /GOOGLE_IDENTITY_CLIENT_ID\s*=\s*"743748401179-[^"]+\.apps\.googleusercontent\.com"/);
   assert.doesNotMatch(`${client}\n${config}`, /clientSecret|privateKey|serviceAccount/i);
@@ -40,8 +41,7 @@ test("기존 UI 버튼이 Google OAuth 토큰을 Firebase credential로 교환�
   assert.match(client, /https:\/\/accounts\.google\.com\/gsi\/client/);
   assert.match(client, /oauth2\.initTokenClient/);
   assert.match(client, /requestAccessToken\(\{ prompt: "select_account" \}\)/);
-  assert.match(client, /GoogleAuthProvider\.credential\(null, response\.access_token\)/);
-  assert.match(client, /signInWithCredential\(auth, credential\)/);
+  assert.match(client, /auth\.signIn\(response\.access_token\)/);
   assert.doesNotMatch(client, /renderButton/);
   assert.doesNotMatch(client, /signInWithPopup/);
 });
@@ -87,9 +87,9 @@ test("선택형 고유 닉네임은 UID 소유권과 분리해 예약하고 공�
   assert.doesNotMatch(client, /A-Za-z0-9가-힣|nicknameCancel/);
   assert.match(client, /nicknameKey !== "pilot"/);
   assert.doesNotMatch(client, /currentUser\.displayName|user\.displayName/);
-  assert.match(client, /onAuthStateChanged\(auth, \(user\) => \{[\s\S]*initializeCurrentProfile\(user\)/);
-  assert.match(client, /nicknamePrompted: true[\s\S]*createdAt: firebaseApi\.serverTimestamp\(\)[\s\S]*updatedAt: firebaseApi\.serverTimestamp\(\)/);
-  assert.match(client, /runTransaction\(db, async \(transaction\) => \{[\s\S]*transaction\.get\(userRef\)[\s\S]*transaction\.get\(nicknameRef\)[\s\S]*transaction\.set\(nicknameRef[\s\S]*transaction\.set\(userRef/);
+  assert.match(client, /auth\.onChange\(\(user\) => \{[\s\S]*initializeCurrentProfile\(user\)/);
+  assert.match(client, /nicknamePrompted: true[\s\S]*createdAt: serverTimestamp\(\)[\s\S]*updatedAt: serverTimestamp\(\)/);
+  assert.match(client, /runTransaction\(async \(transaction\) => \{[\s\S]*transaction\.get\(userRef\)[\s\S]*transaction\.get\(nicknameRef\)[\s\S]*transaction\.set\(nicknameRef[\s\S]*transaction\.set\(userRef/);
   assert.match(client, /const profileCache = new Map\(\);[\s\S]*const profileDataCache = new Map\(\);[\s\S]*const profileRequests = new Map\(\)/);
   assert.match(client, /function getProfileData\(uid\)[\s\S]*profileDataCache\.has[\s\S]*profileRequests\.has/);
   assert.match(client, /cacheAge < PROFILE_CACHE_TTL_MS[\s\S]*profileDataCache\.delete\(normalizedUid\)/);
@@ -536,7 +536,7 @@ test("공개 핏팅은 사용자별 원자적 카운터로 300개를 제한하�
   const adminReadme = read("admin/README.md");
   assert.match(client, /const MAX_PUBLIC_FITTINGS = 300/);
   assert.doesNotMatch(client, /community-tab-count|mineUploadCount|refreshMineUploadCount/);
-  assert.match(client, /runTransaction\(db, async \(transaction\) => \{[\s\S]*transaction\.get\(usageRef\)[\s\S]*count >= MAX_PUBLIC_FITTINGS[\s\S]*operation: "create"/);
+  assert.match(client, /runTransaction\(async \(transaction\) => \{[\s\S]*transaction\.get\(usageRef\)[\s\S]*count >= MAX_PUBLIC_FITTINGS[\s\S]*operation: "create"/);
   assert.match(client, /deleteRemoteFitting[\s\S]*transaction\.get\(usageRef\)[\s\S]*operation: "delete"/);
   assert.match(rules, /function usagePath\(uid\)/);
   assert.match(rules, /getAfter\(usagePath\(request\.auth\.uid\)\)\.data\.count <= 300/);

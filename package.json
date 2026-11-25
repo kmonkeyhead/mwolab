@@ -7,7 +7,7 @@
     "test:formulas": "node --test tests/mechlab-formulas.test.js tests/skill-tree.test.js tests/mwo-skill-codec.test.js",
     "test:quirks": "node --test tests/quirk-calculations.test.js",
     "test:data": "node --test tests/generated-data.test.js",
-    "test:community": "node --test tests/firebase-community-config.test.js",
+    "test:community": "node --test tests/firebase-community-config.test.js tests/community-auth.test.js",
     "test:mobile": "node --test tests/mobile-routing.test.js",
     "test:seo": "node --test tests/seo-metadata.test.js",
     "test:extract-data": "python -m unittest tests/test_extract_mwo_data.py",
