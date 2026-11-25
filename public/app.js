@@ -417,6 +417,7 @@ const TEXT = {
     "mechlab.variantSwapEquipment": "{component}: {item} 장착 조건 불일치",
     "mechlab.maxFittingTabs": "핏팅 탭은 최대 {max}개까지 열 수 있습니다.",
     "mechlab.ghostHeatWarning": "고스트 힛 발생 가능",
+    "mechlab.heatSinkWarning": "히트싱크 부족 ({count}/10)",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
     "mechlab.ghostHeatWarningLine": "{weapons} : 발열 {percent} (최종: {totalHeat}, 고스트 힛: {ghostHeat})",
     "mechlab.weaponDoor": "웨펀도어 데미지 감소",
@@ -1088,6 +1089,7 @@ const TEXT = {
     "mechlab.variantSwapEquipment": "{component}: {item} cannot be fitted",
     "mechlab.maxFittingTabs": "You can open up to {max} fitting tabs.",
     "mechlab.ghostHeatWarning": "Ghost heat possible",
+    "mechlab.heatSinkWarning": "Insufficient heat sinks ({count}/10)",
     "mechlab.ghostHeatWarningTitle": "GHOST HEAT WARNING",
     "mechlab.ghostHeatWarningLine": "{weapons}: heat {percent} (final: {totalHeat}, ghost heat: {ghostHeat})",
     "mechlab.weaponDoor": "Weapon door damage reduction",
@@ -10959,7 +10961,17 @@ function mechlabGhostHeatWarnings() {
   return warnings.sort((left, right) => left.groupKey.localeCompare(right.groupKey, undefined, { numeric: true }));
 }
 
-function renderMechlabGhostHeatWarning() {
+function renderMechlabWarnings(calc) {
+  const sinkWarning = $("heat-sink-warning");
+  if (sinkWarning) {
+    const low = calc?.totalHeatSinkCount < 10;
+    sinkWarning.hidden = !low;
+    if (low) sinkWarning.setAttribute("aria-label", t("mechlab.heatSinkWarning", { count: calc.totalHeatSinkCount }));
+    if (activeEquipmentTooltipTarget === sinkWarning) {
+      if (low) showEquipmentTooltip(sinkWarning);
+      else hideEquipmentTooltip();
+    }
+  }
   const warning = $("ghost-heat-warning");
   if (!warning) return;
   const warnings = state.selectedMech && state.currentBuild ? mechlabGhostHeatWarnings() : [];
@@ -13921,7 +13933,7 @@ function renderVariant() {
   $("data-status").textContent = calc.warnings.length ? calc.warnings.join(" - ") : t("status.loadedData", { count: state.index.counts.mechs });
   renderSummary(calc);
   renderMechSummary(calc);
-  renderMechlabGhostHeatWarning();
+  renderMechlabWarnings(calc);
   renderComponents(calc);
   if (state.activeEquipmentCategory === "ammo") renderEquipmentList();
 }
@@ -13932,7 +13944,7 @@ function renderSelectionPrompt() {
   renderMechlabFittingTabs();
   renderSummary();
   renderMechSummary();
-  renderMechlabGhostHeatWarning();
+  renderMechlabWarnings();
   $("components").innerHTML = `<div class="empty">${t("info.componentsPrompt")}</div>`;
 }
 
@@ -16587,18 +16599,25 @@ function showEquipmentTooltip(target) {
   const item = equipmentTooltipItem(target);
   const omnipod = equipmentTooltipOmnipod(target);
   const ghostHeatWarning = target?.dataset.ghostHeatWarning !== undefined;
+  const sinkWarning = target?.id === "heat-sink-warning";
   const weaponDoorComponent = target?.dataset.weaponDoor || "";
   const weaponDoorHtml = weaponDoorComponent ? weaponDoorTooltipHtml(weaponDoorComponent) : "";
   const tooltip = $("equipment-tooltip");
-  if ((!item && !omnipod && !ghostHeatWarning && !weaponDoorHtml) || !tooltip) return;
+  if ((!item && !omnipod && !ghostHeatWarning && !sinkWarning && !weaponDoorHtml) || !tooltip) return;
   activeEquipmentTooltipTarget = target;
   const ghostHeatExtra = item && target.classList.contains("ghost-heat-triggered")
     ? mechlabGhostHeatWarnings().find(({ groupKey }) => groupKey === ghostHeatGroupKey(item))?.extraHeat || 0
     : 0;
-  tooltip.innerHTML = weaponDoorHtml || (ghostHeatWarning
+  const sinkWarningHtml = sinkWarning
+    ? `<div class="equipment-tooltip-card tooltip-ghost-heat tooltip-sink-warning">
+         <div class="equipment-tooltip-title">HEAT SINK WARNING</div>
+         <div class="ghost-heat-warning-tooltip-lines"><p>${escapeHtml(target.getAttribute("aria-label"))}</p></div>
+       </div>`
+    : "";
+  tooltip.innerHTML = sinkWarningHtml || weaponDoorHtml || (ghostHeatWarning
     ? ghostHeatWarningTooltipHtml()
     : omnipod ? omnipodTooltipHtml(omnipod) : equipmentTooltipHtml(item, ghostHeatExtra));
-  tooltip.classList.toggle("ghost-heat-tooltip-open", ghostHeatWarning);
+  tooltip.classList.toggle("ghost-heat-tooltip-open", ghostHeatWarning || sinkWarning);
   tooltip.hidden = false;
   positionEquipmentTooltip(target);
 }
@@ -17430,7 +17449,7 @@ function bindEvents() {
     event.preventDefault();
     changeLanguage(language);
   });
-  const tooltipSelector = "[data-item], [data-tooltip-item], [data-loadout-item], [data-engine-heat-sink-item], [data-omnipod], [data-tooltip-omnipod], [data-ghost-heat-warning], [data-weapon-door]";
+  const tooltipSelector = "[data-item], [data-tooltip-item], [data-loadout-item], [data-engine-heat-sink-item], [data-omnipod], [data-tooltip-omnipod], [data-ghost-heat-warning], #heat-sink-warning, [data-weapon-door]";
   if (!globalThis.__MWOLAB_MOBILE__) {
     document.addEventListener("pointerover", (event) => {
       const target = event.target.closest(tooltipSelector);

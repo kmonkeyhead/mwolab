@@ -8419,6 +8419,7 @@ body.weapon-detail-open {
   line-height: 1.8rem;
 }
 
+.heat-sink-warning,
 .ghost-heat-warning {
   position: absolute;
   z-index: 8;
@@ -8439,6 +8440,18 @@ body.weapon-detail-open {
   font: 900 0.9rem/1 sans-serif;
 }
 
+.heat-sink-warning {
+  border-color: #eac34e;
+  background: #30270e;
+  box-shadow: none;
+  color: #ffdc68;
+}
+
+.ghost-heat-warning:not([hidden]) + .heat-sink-warning {
+  left: 2.2rem;
+}
+
+.heat-sink-warning[hidden],
 .ghost-heat-warning[hidden] {
   display: none;
 }
@@ -9677,6 +9690,10 @@ body.pointer-drag-active * {
   --tooltip-accent: #ff8d5c;
   width: max-content;
   min-width: 100%;
+}
+
+.equipment-tooltip-card.tooltip-sink-warning {
+  --tooltip-accent: #ffdc68;
 }
 
 .equipment-tooltip-card.tooltip-weapon-door {
