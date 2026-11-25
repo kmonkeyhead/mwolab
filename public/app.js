@@ -167,6 +167,7 @@ const MECHLAB_USER_VARIANT_PAIRS = [
   [865, 817], // MAD-9M(C) / MAD-9M
   [3656, 3700], // BLIGHT (LGD) / BLIGHT
   [934, 640], // TNS-5S(P) / TNS-5S
+  [915, 602], // GAR-E(P) / GAR-E
 ];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
