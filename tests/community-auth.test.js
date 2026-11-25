@@ -20,6 +20,7 @@ test("Worker accepts only the site, returns only session fields, and limits requ
   const response = await send("/login", { token: "google", providerId: "other" });
   assert.deepEqual(await response.json(), { uid: "user", idToken: "id", refreshToken: "refresh", expiresIn: 3600 });
   assert.equal(upstream.url.hostname, "identitytoolkit.googleapis.com");
+  assert.equal(upstream.init.redirect, "manual");
   assert.equal(upstream.url.searchParams.get("key"), secret);
   assert.equal(new URLSearchParams(JSON.parse(upstream.init.body).postBody).get("providerId"), "google.com");
   globalThis.fetch.mock.mockImplementation(async () => Response.json({ error: { message: "INVALID_REFRESH_TOKEN" } }, { status: 400 }));

@@ -60,8 +60,9 @@ export default {
         method: "POST",
         headers: { "Content-Type": login ? "application/json" : "application/x-www-form-urlencoded" },
         body,
-        redirect: "error",
+        redirect: "manual",
       });
+      if (response.status >= 300 && response.status < 400) return reply({ error: "unavailable" }, 502);
       const payload = await response.json();
       if (!response.ok) {
         const code = payload.error?.message?.split(" : ")[0];
