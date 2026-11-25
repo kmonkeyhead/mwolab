@@ -415,6 +415,8 @@ test("필터 전체 초기화는 모든 탭의 멕 필터를 기본값으로 되
   assert.equal(filterApi.mechFiltersAtDefault(), true);
   assert.equal(filterApi.resetMechFilters({ render: false }), false);
 
+  state.mechFilterDesign = "omni";
+  assert.equal(filterApi.mechFiltersAtDefault(), false);
   state.mechFilterFaction = "Clan";
   state.mechFilterWeightClasses.add("light");
   state.mechFilterAllTypes = false;
@@ -432,6 +434,7 @@ test("필터 전체 초기화는 모든 탭의 멕 필터를 기본값으로 되
   assert.equal(filterApi.resetMechFilters({ render: false }), true);
   assert.equal(filterApi.mechFiltersAtDefault(), true);
   assert.equal(state.mechFilterFaction, "");
+  assert.equal(state.mechFilterDesign, "all");
   assert.equal(state.mechFilterAllTypes, true);
   assert.deepEqual([...state.mechFilterSpecialTypes].sort(), ["champion", "hero"]);
   assert.equal(state.mechHardpointFilters[hardpointType].enabled, false);

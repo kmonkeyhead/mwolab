@@ -562,6 +562,9 @@ const TEXT = {
     "filters.specialTargetComputerDescription": "무기 작동 방식 변경",
     "filters.weaponDoorDescription": "데미지 감소 보유",
     "filters.faction": "진영",
+    "filters.design": "방식",
+    "filters.battleMech": "배틀메크",
+    "filters.omniMech": "옵니메크",
     "filters.weightClass": "체급",
     "filters.mechType": "멕 종류",
     "filters.hardpoints": "하드포인트",
@@ -1230,6 +1233,9 @@ const TEXT = {
     "filters.specialTargetComputerDescription": "Changes weapon behavior",
     "filters.weaponDoorDescription": "Has damage reduction",
     "filters.faction": "Faction",
+    "filters.design": "Design",
+    "filters.battleMech": "BattleMech",
+    "filters.omniMech": "OmniMech",
     "filters.weightClass": "Weight class",
     "filters.mechType": "Mech type",
     "filters.hardpoints": "Hardpoints",
@@ -2467,6 +2473,7 @@ const state = {
   mechSortDirection: "asc",
   mechSortGroupFaction: true,
   mechFilterFaction: "",
+  mechFilterDesign: "all",
   mechFilterWeightClasses: new Set(),
   mechFilterAllTypes: true,
   mechFilterTypeCategories: new Set(),
@@ -8001,6 +8008,8 @@ function mechMatchesListFilters(mech, search = "") {
   return matchesSearch
     && matchesFaction
     && matchesWeight
+    && (state.mechFilterDesign === "all"
+      || state.mechFilterDesign === (hasFixedOmnipods(mech) ? "omni" : "battle"))
     && mechMatchesTypeFilter(mech)
     && mechMatchesHardpointFilters(mech)
     && mechMatchesSpecialFeatureFilters(mech)
@@ -8166,6 +8175,7 @@ function renderMechFilterControls() {
     && state.mechFilterWeightClasses.size < 4;
   const filterActive = Boolean(state.mechFilterFaction)
     || weightFilterActive
+    || state.mechFilterDesign !== "all"
     || !state.mechFilterAllTypes
     || MECH_HARDPOINT_FILTER_ORDER.some((type) => state.mechHardpointFilters[type].enabled)
     || state.mechSpecialTraitSelections.size > 0
@@ -8178,6 +8188,11 @@ function renderMechFilterControls() {
   });
   document.querySelectorAll("[data-mech-filter-faction]").forEach((button) => {
     const active = button.dataset.mechFilterFaction === state.mechFilterFaction;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  document.querySelectorAll("[data-mech-filter-design]").forEach((button) => {
+    const active = button.dataset.mechFilterDesign === state.mechFilterDesign;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
@@ -15206,6 +15221,7 @@ function defaultMechHardpointFilters() {
 
 function mechFiltersAtDefault() {
   return !state.mechFilterFaction
+    && state.mechFilterDesign === "all"
     && state.mechFilterWeightClasses.size === 0
     && state.mechFilterAllTypes
     && state.mechFilterTypeCategories.size === 0
@@ -15222,6 +15238,7 @@ function mechFiltersAtDefault() {
 function resetMechFilters({ render = true } = {}) {
   if (mechFiltersAtDefault()) return false;
   state.mechFilterFaction = "";
+  state.mechFilterDesign = "all";
   state.mechFilterWeightClasses.clear();
   state.mechFilterAllTypes = true;
   state.mechFilterTypeCategories.clear();
@@ -17829,6 +17846,12 @@ function bindEvents() {
     const faction = event.target.closest("[data-mech-filter-faction]");
     if (faction) {
       state.mechFilterFaction = faction.dataset.mechFilterFaction;
+      renderMechList();
+      return;
+    }
+    const design = event.target.closest("[data-mech-filter-design]");
+    if (design) {
+      state.mechFilterDesign = design.dataset.mechFilterDesign;
       renderMechList();
       return;
     }

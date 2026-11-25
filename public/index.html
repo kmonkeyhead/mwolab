@@ -9,7 +9,7 @@
     <meta name="description" content="MWO MechLab and build planner for MechWarrior Online. Compare mechs, equipment, quirks, hardpoints, loadouts, damage, heat and mobility stats.">
     <meta name="robots" content="max-image-preview:none">
     <link rel="canonical" href="https://kmonkeyhead.github.io/mwolab/">
-  <link rel="stylesheet" href="styles.css?v=ccc5e00">
+  <link rel="stylesheet" href="styles.css?v=mech-design-filter">
   <link rel="stylesheet" href="skill-tree.css?v=20260920-4">
   </head>
   <body>
@@ -419,6 +419,14 @@
                 <button type="button" data-mech-filter-weight="medium" data-i18n="weight.medium">미디엄</button>
                 <button type="button" data-mech-filter-weight="heavy" data-i18n="weight.heavy">헤비</button>
                 <button type="button" data-mech-filter-weight="assault" data-i18n="weight.assault">어썰트</button>
+              </div>
+            </div>
+            <div class="mech-filter-section" aria-labelledby="mech-filter-design-title">
+              <h4 id="mech-filter-design-title" data-i18n="filters.design">방식</h4>
+              <div class="mech-filter-options mech-filter-design-options" role="group" aria-labelledby="mech-filter-design-title">
+                <button type="button" data-mech-filter-design="all" data-i18n="filters.all">모두</button>
+                <button type="button" data-mech-filter-design="battle" data-i18n="filters.battleMech">배틀메크</button>
+                <button type="button" data-mech-filter-design="omni" data-i18n="filters.omniMech">옵니메크</button>
               </div>
             </div>
           </section>
@@ -958,7 +966,7 @@
     <script src="quirk-calculations.js?v=20260728-1"></script>
     <script src="skill-tree-topology.js?v=20260920-1"></script>
     <script src="skill-tree.js?v=20260920-6"></script>
-    <script src="app.js?v=ccc5e00"></script>
+    <script src="app.js?v=mech-design-filter"></script>
     <script type="module" src="firebase-community.js?v=20260909-1"></script>
     <!-- Cloudflare Web Analytics -->
     <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"371a16733dad455d9764c3fb51683381"}'></script>

@@ -5420,7 +5420,8 @@ body.ui-settings-open {
   gap: 0.45rem;
 }
 
-.mech-filter-faction-options {
+.mech-filter-faction-options,
+.mech-filter-design-options {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
