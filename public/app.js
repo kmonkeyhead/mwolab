@@ -168,6 +168,8 @@ const MECHLAB_USER_VARIANT_PAIRS = [
   [3656, 3700], // BLIGHT (LGD) / BLIGHT
   [934, 640], // TNS-5S(P) / TNS-5S
   [915, 602], // GAR-E(P) / GAR-E
+  [928, 781], // WHM-IIC-A(P) / WHM-IIC-A
+  [768, 769], // WHM-IIC(S) / whm-prime
 ];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
