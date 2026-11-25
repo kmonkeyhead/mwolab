@@ -130,6 +130,43 @@ const MECHLAB_USER_VARIANT_PAIRS = [
   [978, 375], // ON1-IIC-C(S) / ON1-IIC-C
   [946, 445], // NTG-C(P) / ntg-c
   [756, 779], // NTG-H(L) / NTG-H
+  [950, 11], // DRG-1C(P) / DRG-1C
+  [828, 830], // GRAND DRAGON DRG-1G(S) / DRG-1G
+  [3689, 10], // DRG-1N(O) / DRG-1N
+  [884, 84], // QKD-5K(P) / QKD-4K (user-confirmed IDs)
+  [3610, 3674], // DESPERADA (LGD) / DESPERADA
+  [926, 389], // RFL-5D(P) / RFL-5D
+  [754, 777], // RFL-8D(L) / RFL-8D
+  [986, 742], // CHP-3N(P) / CHP-3N
+  [3685, 3686], // BHKU-O(S) / BHKU-O
+  [3688, 3687], // BHKU-OXS / BHKU-OX
+  [804, 815], // CPLT-C2(S) / CPLT-C2
+  [871, 19], // CPLT-K2(P) / CPLT-K2
+  [3690, 19], // CPLT-K2(O) / CPLT-K2
+  [902, 65], // JM6-DD(P) / JM6-DD
+  [3663, 3715], // DUELIST / JM6-DE
+  [970, 155], // TDR-9S(P) / TDR-9S
+  [3695, 155], // TDR-9S(S) / TDR-9S
+  [827, 829], // TDR-10SE(S) / TDR-10SE
+  [954, 539], // RGH-3A(P) / RGH-3A
+  [893, 894], // CRD-3R(S) / crd-3r
+  [953, 897], // CRD-6T(P) / CRD-6T
+  [883, 44], // CTF-4X(P) / CTF-4X
+  [910, 314], // GHR-5P(P) / GHR-5P
+  [755, 778], // WHM-4L(L) / WHM-4L
+  [924, 384], // WHM-7S(P) / WHM-7S
+  [805, 816], // WHM-9D(S) / WHM-9D
+  [927, 394], // ARC-5W(P) / ARC-5W
+  [156, 99], // ON1-K(C) / ON1-K
+  [918, 99], // ON1-K(P) / ON1-K
+  [319, 320], // BL-6-KNT(R) / BL-6-KNT
+  [887, 321], // BL-6B-KNT(P) / BL-6B-KNT
+  [3681, 3729], // RED REAPER II (LGD) / RED REAPER II
+  [925, 347], // MAD-5M(P) / MAD-5M
+  [806, 817], // MAD-9M(S) / MAD-9M
+  [865, 817], // MAD-9M(C) / MAD-9M
+  [3656, 3700], // BLIGHT (LGD) / BLIGHT
+  [934, 640], // TNS-5S(P) / TNS-5S
 ];
 let mechNavigationReady = false;
 let mechSortTrigger = null;
@@ -4399,7 +4436,7 @@ function effectiveDefinition(mech = state.selectedMech, build = state.currentBui
 }
 
 // Explicit user corrections; preserve the extracted parent data unchanged.
-const MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS = [[3622, 422], [3683, 422], [3623, 164]];
+const MECHLAB_EXCLUDED_TABLE_VARIANT_PAIRS = [[3622, 422], [3683, 422], [3623, 164], [3681, 320], [3729, 320]];
 
 function mechlabVariantRelationSources(mechs = state.mechs) {
   return {
